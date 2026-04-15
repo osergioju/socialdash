@@ -1,0 +1,71 @@
+const oauthService = require("../services/oauth.service");
+
+const PLATFORM_MAP = {
+  meta: "META",
+  google: "GOOGLE_ANALYTICS",
+  linkedin: "LINKEDIN",
+};
+
+function frontendUrl(path) {
+  return (process.env.FRONTEND_URL || "http://localhost:5173") + path;
+}
+
+// GET /api/oauth/:platform/connect?clientId=xxx
+async function connect(req, res) {
+
+  const platform = PLATFORM_MAP[req.params.platform];
+  if (!platform) return res.status(400).json({ error: "Plataforma desconhecida" });
+
+  const { clientId } = req.query;
+  if (!clientId) return res.status(400).json({ error: "clientId é obrigatório" });
+
+  try {
+    const url = oauthService.buildAuthUrl(platform, clientId, req.user.id);
+    res.json({ url });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+}
+
+// GET /api/oauth/:platform/callback?code=xxx&state=xxx
+async function callback(req, res) {
+
+  const platform = PLATFORM_MAP[req.params.platform];
+  if (!platform) return res.redirect(frontendUrl("/oauth/error?reason=unknown_platform"));
+
+  const { code, state, error: oauthError, error_description } = req.query;
+
+  if (oauthError) {
+    const msg = encodeURIComponent(error_description || oauthError);
+    return res.redirect(frontendUrl(`/oauth/callback?success=false&error=${msg}`));
+  }
+
+  try {
+    const result = await oauthService.handleCallback(platform, code, state);
+    return res.redirect(
+      frontendUrl(`/oauth/callback?success=true&platform=${platform}&clientId=${result.clientId}`)
+    );
+  } catch (err) {
+    const msg = encodeURIComponent(err.message);
+    return res.redirect(frontendUrl(`/oauth/callback?success=false&error=${msg}&platform=${platform}`));
+  }
+}
+
+// DELETE /api/oauth/:platform/revoke?clientId=xxx
+async function revoke(req, res) {
+
+  const platform = PLATFORM_MAP[req.params.platform];
+  if (!platform) return res.status(400).json({ error: "Plataforma desconhecida" });
+
+  const { clientId } = req.query;
+  if (!clientId) return res.status(400).json({ error: "clientId é obrigatório" });
+
+  try {
+    await oauthService.revokeConnection(clientId, platform, req.user.id);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+}
+
+module.exports = { connect, callback, revoke };

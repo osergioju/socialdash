@@ -1,0 +1,254 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  password  String
+  role      Role     @default(VIEWER)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  clients   Client[]
+
+  @@map("users")
+}
+
+enum Role {
+  ADMIN
+  EDITOR
+  VIEWER
+}
+
+// ─── Agency client management ─────────────────────────────────────────────────
+
+model Client {
+  id          String               @id @default(cuid())
+  name        String
+  slug        String               @unique
+  logoUrl     String?
+  website     String?
+  notes       String?
+  createdById String
+  createdBy   User                 @relation(fields: [createdById], references: [id])
+  connections PlatformConnection[]
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  @@map("clients")
+}
+
+model PlatformConnection {
+  id           String           @id @default(cuid())
+  clientId     String
+  client       Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  platform     OAuthPlatform
+  status       ConnectionStatus @default(PENDING)
+  // Tokens stored encrypted (AES-256-GCM). Never plaintext.
+  accessToken  String?
+  refreshToken String?
+  expiresAt    DateTime?
+  // Human-readable account info returned by provider
+  accountId    String?
+  accountName  String?
+  accountEmail String?
+  // Extra metadata (page IDs, property IDs, org URNs…) stored as JSON string
+  metadata     String?
+  connectedAt  DateTime?
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@unique([clientId, platform])
+  @@map("platform_connections")
+}
+
+enum OAuthPlatform {
+  META
+  GOOGLE_ANALYTICS
+  LINKEDIN
+}
+
+enum ConnectionStatus {
+  PENDING
+  CONNECTED
+  EXPIRED
+  REVOKED
+  ERROR
+}
+
+model InstagramMetric {
+  id                     String   @id @default(cuid())
+  month                  String   // e.g. "2025-04"
+  monthLabel             String   // e.g. "Abril/25"
+  seguidores             Int
+  novosSeguidores        Int
+  alcanceOrganico        Int
+  visualizacoes          Int
+  interacoes             Int
+  visitasPerfil          Int
+  postagensTotal         Int
+  reelsQtd               Int
+  reelsAlcance           Int
+  reelsInteracoes        Int
+  storiesQtd             Int
+  storiesViews           Int
+  curtidasPosts          Int
+  comentariosPosts       Int
+  salvamentosPosts       Int
+  compartilhamentosPosts Int
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  @@unique([month])
+  @@map("instagram_metrics")
+}
+
+model LinkedinMetric {
+  id              String   @id @default(cuid())
+  month           String
+  monthLabel      String
+  seguidores      Int
+  novosSeguidores Int
+  alcance         Int
+  impressoes      Int
+  engajamento     Int
+  cliques         Int
+  reacoes         Int
+  postagens       Int
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([month])
+  @@map("linkedin_metrics")
+}
+
+model Ga4Metric {
+  id                     String   @id @default(cuid())
+  month                  String
+  monthLabel             String
+  usuariosAtivos         Int
+  novosUsuarios          Int
+  usuariosTotais         Int
+  sessoes                Int
+  sessoesEngajadas       Int
+  taxaEngajamento        Float
+  tempoMedioEngajamento  Int
+  tempoMedioSessao       Int?
+  viewsPorSessao         Float
+  numEventos             Int
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  @@unique([month])
+  @@map("ga4_metrics")
+}
+
+model City {
+  id        String       @id @default(cuid())
+  name      String
+  platform  Platform
+  metrics   CityMetric[]
+
+  @@unique([name, platform])
+  @@map("cities")
+}
+
+model CityMetric {
+  id         String   @id @default(cuid())
+  cityId     String
+  city       City     @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  month      String
+  seguidores Int
+  createdAt  DateTime @default(now())
+
+  @@unique([cityId, month])
+  @@map("city_metrics")
+}
+
+enum Platform {
+  INSTAGRAM
+  LINKEDIN
+}
+
+model Theme {
+  id                  String   @id @default(cuid())
+  tema                String
+  icon                String
+  platform            Platform
+  curtidas            Int?
+  comentarios         Int?
+  compartilhamentos   Int?
+  alcanceMedio        Int?
+  engajamento         Int?
+  cliques             Int?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@map("themes")
+}
+
+model Ga4Page {
+  id       String        @id @default(cuid())
+  pagina   String        @unique
+  label    String
+  metrics  Ga4PageMetric[]
+
+  @@map("ga4_pages")
+}
+
+model Ga4PageMetric {
+  id         String  @id @default(cuid())
+  pageId     String
+  page       Ga4Page @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  month      String
+  views      Int?
+  tempoMedio Int?
+
+  @@unique([pageId, month])
+  @@map("ga4_page_metrics")
+}
+
+model Ga4Origin {
+  id      String           @id @default(cuid())
+  fonte   String           @unique
+  metrics Ga4OriginMetric[]
+
+  @@map("ga4_origins")
+}
+
+model Ga4OriginMetric {
+  id         String    @id @default(cuid())
+  originId   String
+  origin     Ga4Origin @relation(fields: [originId], references: [id], onDelete: Cascade)
+  month      String
+  sessoes    Int?
+  taxaEng    Float?
+  tempoMedio Int?
+
+  @@unique([originId, month])
+  @@map("ga4_origin_metrics")
+}
+
+model LinkedinIndustry {
+  id         String @id @default(cuid())
+  nome       String @unique
+  seguidores Int
+  updatedAt  DateTime @updatedAt
+
+  @@map("linkedin_industries")
+}
+
+model LinkedinRole {
+  id         String @id @default(cuid())
+  nome       String @unique
+  seguidores Int
+  updatedAt  DateTime @updatedAt
+
+  @@map("linkedin_roles")
+}
