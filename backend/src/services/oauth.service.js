@@ -6,13 +6,13 @@
  *  2. handleCallback(platform, code, stateJwt) → stores encrypted token in DB
  */
 
-const jwt    = require("jsonwebtoken");
-const https  = require("https");
+const jwt = require("jsonwebtoken");
+const https = require("https");
 const prisma = require("../config/prisma");
 const { encrypt } = require("../utils/crypto");
 
 // ─── State JWT (short-lived, CSRF protection) ─────────────────────────────────
-const STATE_SECRET  = () => process.env.JWT_SECRET + "_oauth_state";
+const STATE_SECRET = () => process.env.JWT_SECRET + "_oauth_state";
 const STATE_EXPIRES = "10m";
 
 function signState(payload) {
@@ -25,33 +25,33 @@ function verifyState(token) {
 // ─── Config per platform ──────────────────────────────────────────────────────
 const PLATFORM_CONFIG = {
   META: {
-    authUrl:   "https://www.facebook.com/dialog/oauth",
-    tokenUrl:  "https://graph.facebook.com/v19.0/oauth/access_token",
-    scopes:    "pages_show_list,instagram_basic,instagram_manage_insights,instagram_manage_comments,pages_read_engagement,business_management",
-    clientId:  () => process.env.META_APP_ID,
-    secret:    () => process.env.META_APP_SECRET,
+    authUrl: "https://www.facebook.com/dialog/oauth",
+    tokenUrl: "https://graph.facebook.com/v19.0/oauth/access_token",
+    scopes: "pages_show_list,instagram_basic,instagram_manage_insights,instagram_manage_comments,pages_read_engagement,business_management",
+    clientId: () => process.env.META_APP_ID,
+    secret: () => process.env.META_APP_SECRET,
     redirectPath: "/api/oauth/meta/callback",
   },
   GOOGLE_ANALYTICS: {
-    authUrl:   "https://accounts.google.com/o/oauth2/v2/auth",
-    tokenUrl:  "https://oauth2.googleapis.com/token",
-    scopes:    "https://www.googleapis.com/auth/analytics.readonly https://www.googleapis.com/auth/userinfo.email",
-    clientId:  () => process.env.GOOGLE_CLIENT_ID,
-    secret:    () => process.env.GOOGLE_CLIENT_SECRET,
+    authUrl: "https://accounts.google.com/o/oauth2/v2/auth",
+    tokenUrl: "https://oauth2.googleapis.com/token",
+    scopes: "https://www.googleapis.com/auth/analytics.readonly https://www.googleapis.com/auth/userinfo.email",
+    clientId: () => process.env.GOOGLE_CLIENT_ID,
+    secret: () => process.env.GOOGLE_CLIENT_SECRET,
     redirectPath: "/api/oauth/google/callback",
   },
   LINKEDIN: {
-    authUrl:   "https://www.linkedin.com/oauth/v2/authorization",
-    tokenUrl:  "https://www.linkedin.com/oauth/v2/accessToken",
-    scopes:    "r_organization_social rw_organization_admin r_basicprofile r_emailaddress",
-    clientId:  () => process.env.LINKEDIN_CLIENT_ID,
-    secret:    () => process.env.LINKEDIN_CLIENT_SECRET,
+    authUrl: "https://www.linkedin.com/oauth/v2/authorization",
+    tokenUrl: "https://www.linkedin.com/oauth/v2/accessToken",
+    scopes: "r_organization_social rw_organization_admin r_basicprofile r_emailaddress",
+    clientId: () => process.env.LINKEDIN_CLIENT_ID,
+    secret: () => process.env.LINKEDIN_CLIENT_SECRET,
     redirectPath: "/api/oauth/linkedin/callback",
   },
 };
 
 function callbackUrl(platform) {
-  const base = process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 3001}`;
+  const base = process.env.BACKEND_URL || `http://comunity.crtcomunicacao.com.br/api`;
   return base + PLATFORM_CONFIG[platform].redirectPath;
 }
 
@@ -66,11 +66,11 @@ function buildAuthUrl(platform, clientId, userId) {
   const state = signState({ platform, clientId, userId });
 
   const params = new URLSearchParams({
-    client_id:     appClientId,
-    redirect_uri:  callbackUrl(platform),
+    client_id: appClientId,
+    redirect_uri: callbackUrl(platform),
     response_type: "code",
     state,
-    scope:         cfg.scopes,
+    scope: cfg.scopes,
   });
 
   // Google extras
@@ -85,14 +85,14 @@ function buildAuthUrl(platform, clientId, userId) {
 // ─── Exchange code → token ─────────────────────────────────────────────────────
 function httpPost(url, body) {
   return new Promise((resolve, reject) => {
-    const data   = new URLSearchParams(body).toString();
+    const data = new URLSearchParams(body).toString();
     const parsed = new URL(url);
-    const opts   = {
+    const opts = {
       hostname: parsed.hostname,
       path: parsed.pathname + parsed.search,
       method: "POST",
       headers: {
-        "Content-Type":  "application/x-www-form-urlencoded",
+        "Content-Type": "application/x-www-form-urlencoded",
         "Content-Length": Buffer.byteLength(data),
       },
     };
@@ -115,8 +115,8 @@ function httpGet(url, token) {
     const parsed = new URL(url);
     const opts = {
       hostname: parsed.hostname,
-      path:     parsed.pathname + parsed.search,
-      headers:  { Authorization: `Bearer ${token}` },
+      path: parsed.pathname + parsed.search,
+      headers: { Authorization: `Bearer ${token}` },
     };
     https.get(opts, (res) => {
       let raw = "";
@@ -173,10 +173,10 @@ async function handleCallback(platform, code, stateToken) {
 
   // 2. Exchange code for token
   const tokenRes = await httpPost(cfg.tokenUrl, {
-    grant_type:    "authorization_code",
+    grant_type: "authorization_code",
     code,
-    redirect_uri:  callbackUrl(platform),
-    client_id:     cfg.clientId(),
+    redirect_uri: callbackUrl(platform),
+    client_id: cfg.clientId(),
     client_secret: cfg.secret(),
   });
 
@@ -184,37 +184,37 @@ async function handleCallback(platform, code, stateToken) {
     throw Object.assign(new Error(tokenRes.error_description || tokenRes.error), { status: 400 });
   }
 
-  const accessToken  = tokenRes.access_token;
+  const accessToken = tokenRes.access_token;
   const refreshToken = tokenRes.refresh_token || null;
-  const expiresIn    = tokenRes.expires_in; // seconds
+  const expiresIn = tokenRes.expires_in; // seconds
 
   // 3. Fetch account info
   const info = await fetchAccountInfo(platform, accessToken);
 
   // 4. Upsert connection with encrypted tokens
   const connection = await prisma.platformConnection.upsert({
-    where:  { clientId_platform: { clientId, platform } },
+    where: { clientId_platform: { clientId, platform } },
     update: {
-      status:       "CONNECTED",
-      accessToken:  encrypt(accessToken),
+      status: "CONNECTED",
+      accessToken: encrypt(accessToken),
       refreshToken: refreshToken ? encrypt(refreshToken) : null,
-      expiresAt:    expiresIn ? new Date(Date.now() + expiresIn * 1000) : null,
-      accountId:    info.accountId   || null,
-      accountName:  info.accountName || null,
+      expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000) : null,
+      accountId: info.accountId || null,
+      accountName: info.accountName || null,
       accountEmail: info.accountEmail || null,
-      connectedAt:  new Date(),
+      connectedAt: new Date(),
     },
     create: {
       clientId,
       platform,
-      status:       "CONNECTED",
-      accessToken:  encrypt(accessToken),
+      status: "CONNECTED",
+      accessToken: encrypt(accessToken),
       refreshToken: refreshToken ? encrypt(refreshToken) : null,
-      expiresAt:    expiresIn ? new Date(Date.now() + expiresIn * 1000) : null,
-      accountId:    info.accountId   || null,
-      accountName:  info.accountName || null,
+      expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000) : null,
+      accountId: info.accountId || null,
+      accountName: info.accountName || null,
       accountEmail: info.accountEmail || null,
-      connectedAt:  new Date(),
+      connectedAt: new Date(),
     },
   });
 
