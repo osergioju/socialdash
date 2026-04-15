@@ -12,7 +12,7 @@ import { C } from "../utils/colors";
 export default function ClientsPage() {
   const { clients, loading, error, reload } = useClients();
   const [showModal, setShowModal] = useState(false);
-  const [deleting, setDeleting]   = useState(null);
+  const [deleting, setDeleting] = useState(null);
   const navigate = useNavigate();
 
   async function handleDelete(e, id) {
@@ -32,7 +32,7 @@ export default function ClientsPage() {
           <div>
             <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, color: C.text }}>Clientes</h1>
             <p style={{ margin: "4px 0 0", fontSize: 13, color: C.textMuted }}>
-              Gerencie clientes e suas conexões com plataformas
+              Gerencie clientes e suas conexões com plataformas.
             </p>
           </div>
           <button onClick={() => setShowModal(true)} style={{ display: "flex", alignItems: "center", gap: 7, padding: "10px 18px", borderRadius: 10, border: "none", background: `linear-gradient(135deg, ${C.primary}, ${C.primaryLight})`, color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "inherit" }}>
@@ -41,7 +41,7 @@ export default function ClientsPage() {
         </div>
 
         {loading && <LoadingState />}
-        {error   && <ErrorState message={error} onRetry={reload} />}
+        {error && <ErrorState message={error} onRetry={reload} />}
 
         {!loading && !error && clients.length === 0 && (
           <div style={{ textAlign: "center", padding: "60px 20px" }}>
