@@ -79,6 +79,11 @@ function buildAuthUrl(platform, clientId, userId) {
     params.set("prompt", "consent");
   }
 
+  // Meta: force account chooser so different clients can connect different accounts
+  if (platform === "META") {
+    params.set("auth_type", "reauthenticate");
+  }
+
   return `${cfg.authUrl}?${params.toString()}`;
 }
 
