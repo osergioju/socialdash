@@ -30,10 +30,15 @@ export const authApi = {
 };
 
 export const metricsApi = {
-  overview: () => api.get("/metrics/overview").then((r) => r.data),
-  instagram: () => api.get("/metrics/instagram").then((r) => r.data),
-  linkedin: () => api.get("/metrics/linkedin").then((r) => r.data),
-  ga4: () => api.get("/metrics/ga4").then((r) => r.data),
+  overview:  (clientId) => api.get("/metrics/overview",  { params: { clientId } }).then((r) => r.data),
+  instagram: (clientId) => api.get("/metrics/instagram", { params: { clientId } }).then((r) => r.data),
+  linkedin:  (clientId) => api.get("/metrics/linkedin",  { params: { clientId } }).then((r) => r.data),
+  ga4:       (clientId) => api.get("/metrics/ga4",       { params: { clientId } }).then((r) => r.data),
+};
+
+export const syncApi = {
+  trigger: (clientId) => api.post(`/sync/${clientId}`).then((r) => r.data),
+  status:  (clientId) => api.get(`/sync/${clientId}/status`).then((r) => r.data),
 };
 
 export default api;

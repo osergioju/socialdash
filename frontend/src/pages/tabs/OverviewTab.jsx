@@ -2,6 +2,7 @@ import React from "react";
 import { Users, Eye, Globe, Heart } from "lucide-react";
 import { ComposedChart, Line, BarChart, Bar, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { useOverview } from "../../hooks/useMetrics";
+import { useClientContext } from "../../contexts/ClientContext";
 import { LoadingState, ErrorState } from "../../components/ui/LoadingState";
 import MetricCard from "../../components/ui/MetricCard";
 import SectionHeader from "../../components/ui/SectionHeader";
@@ -10,14 +11,14 @@ import { C } from "../../utils/colors";
 import { fmt } from "../../utils/format";
 
 export default function OverviewTab() {
-  const { data, loading, error } = useOverview();
+  const clientId = useClientContext();
+  const { data, loading, error } = useOverview(clientId);
 
   if (loading) return <LoadingState />;
-  if (error) return <ErrorState message={error} />;
+  if (error)   return <ErrorState message={error} />;
 
-  const { kpis, timeseries } = data;
+  const { kpis, timeseries, growth } = data;
 
-  // Merge IG + LI + GA4 timeseries by monthKey
   const merged = timeseries.instagram.map((ig, i) => ({
     mes: ig.mes,
     igSeg: ig.igSeg, igAlc: ig.igAlc,
@@ -27,14 +28,11 @@ export default function OverviewTab() {
     sessoes: timeseries.ga4[i]?.sessoes,
   }));
 
-  const igTotal = (kpis.igSeguidores.value ?? 0);
-  const igFirst = igTotal - Math.round(igTotal * kpis.igSeguidores.growth / (100 + kpis.igSeguidores.growth));
-
   return (
     <>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 28 }}>
-        <MetricCard title="Seg. Instagram" value={kpis.igSeguidores.value?.toLocaleString()} variation={kpis.igSeguidores.growth} icon={Users} color={C.instagram} subtitle="10 meses" />
-        <MetricCard title="Seg. LinkedIn"  value={kpis.liSeguidores.value?.toLocaleString()} variation={kpis.liSeguidores.growth} icon={Users} color={C.linkedin} subtitle="10 meses" />
+        <MetricCard title="Seg. Instagram" value={kpis.igSeguidores.value?.toLocaleString()} variation={kpis.igSeguidores.growth} icon={Users} color={C.instagram} subtitle="período" />
+        <MetricCard title="Seg. LinkedIn"  value={kpis.liSeguidores.value?.toLocaleString()} variation={kpis.liSeguidores.growth} icon={Users} color={C.linkedin} subtitle="período" />
         <MetricCard title="Views IG Total" value={fmt(kpis.totalViewsIG.value)} variation={kpis.totalViewsIG.variation} icon={Eye} color={C.purple} />
         <MetricCard title="Usuários Site"  value={fmt(kpis.usuariosSite.value)} variation={kpis.usuariosSite.variation} icon={Globe} color={C.ga4} />
         <MetricCard title="Alcance IG"     value={fmt(kpis.alcanceIG.value)} variation={kpis.alcanceIG.variation} icon={Eye} color={C.green} />
@@ -47,13 +45,33 @@ export default function OverviewTab() {
           <ComposedChart data={merged}>
             <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
             <XAxis dataKey="mes" tick={{ fill: C.textMuted, fontSize: 11 }} axisLine={false} tickLine={false} />
-            <YAxis yAxisId="ig" orientation="left"  tick={{ fill: C.textMuted, fontSize: 10 }} axisLine={false} tickLine={false} domain={[1800, 2300]} />
-            <YAxis yAxisId="li" orientation="right" tick={{ fill: C.textMuted, fontSize: 10 }} axisLine={false} tickLine={false} domain={[4600, 5100]} />
+            <YAxis yAxisId="ig" orientation="left"  tick={{ fill: C.textMuted, fontSize: 10 }} axisLine={false} tickLine={false} />
+            <YAxis yAxisId="li" orientation="right" tick={{ fill: C.textMuted, fontSize: 10 }} axisLine={false} tickLine={false} />
             <Tooltip content={<CustomTooltip />} /><Legend wrapperStyle={{ fontSize: 11 }} />
             <Line yAxisId="ig" type="monotone" dataKey="igSeg" stroke={C.instagram} strokeWidth={3} dot={{ r: 4, fill: C.instagram }} name="Instagram" />
             <Line yAxisId="li" type="monotone" dataKey="liSeg" stroke={C.linkedin}  strokeWidth={3} dot={{ r: 4, fill: C.linkedin }}  name="LinkedIn" />
           </ComposedChart>
         </ResponsiveContainer>
+        {(growth?.igTotal != null || growth?.liTotal != null) && (
+          <div style={{ display: "flex", justifyContent: "center", gap: 40, marginTop: 10 }}>
+            {growth?.igTotal != null && (
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontSize: 10, color: C.textMuted }}>Instagram</div>
+                <div style={{ fontSize: 17, fontWeight: 700, color: C.instagram }}>
+                  +{growth.igTotal} <span style={{ fontSize: 11 }}>({growth.igPct}%)</span>
+                </div>
+              </div>
+            )}
+            {growth?.liTotal != null && (
+              <div style={{ textAlign: "center" }}>
+                <div style={{ fontSize: 10, color: C.textMuted }}>LinkedIn</div>
+                <div style={{ fontSize: 17, fontWeight: 700, color: C.linkedin }}>
+                  +{growth.liTotal} <span style={{ fontSize: 11 }}>({growth.liPct}%)</span>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <SectionHeader icon={Eye} title="Alcance por Canal" subtitle="Volumetria mensal — Instagram vs LinkedIn" color={C.accent} />

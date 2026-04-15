@@ -8,6 +8,7 @@ const authRoutes = require("./routes/auth.routes");
 const metricsRoutes = require("./routes/metrics.routes");
 const clientRoutes = require("./routes/client.routes");
 const oauthRoutes = require("./routes/oauth.routes");
+const syncRoutes = require("./routes/sync.routes");
 
 const app = express();
 
@@ -54,6 +55,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/metrics", metricsRoutes);
 app.use("/api/clients", clientRoutes);
 app.use("/api/oauth", oauthRoutes);
+app.use("/api/sync", syncRoutes);
 
 // ─── HEALTH CHECK ────────────────────────────────────────────────────────────
 app.get("/api/health", (_, res) =>

@@ -1,6 +1,6 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { BarChart3, Globe, Layers, LogOut, ArrowLeft, Users } from "lucide-react";
+import { BarChart3, Globe, Layers, LogOut, ArrowLeft, Users, RefreshCw, AlertCircle } from "lucide-react";
 import { C } from "../utils/colors";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -23,10 +23,38 @@ const TABS = [
   { id: "temas",      label: "Temas & Conteúdo", icon: Layers },
 ];
 
-// clientName e clientId vêm do DashboardPage via props
-export default function DashboardLayout({ activeTab, onTabChange, clientName, clientId, children }) {
+function formatRelative(date) {
+  if (!date) return null;
+  const diff = Date.now() - new Date(date).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return "agora mesmo";
+  if (mins < 60) return `há ${mins} min`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `há ${hours}h`;
+  return new Date(date).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
+export default function DashboardLayout({
+  activeTab, onTabChange, clientName, clientId, children,
+  syncing, syncError, lastSyncAt, onSync,
+}) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const didAutoSync = useRef(false);
+
+  // Auto-sync on first mount if never synced
+  useEffect(() => {
+    if (didAutoSync.current) return;
+    if (!clientId || !onSync) return;
+    // Wait 800ms for status to load, then check
+    const t = setTimeout(() => {
+      if (!lastSyncAt) {
+        didAutoSync.current = true;
+        onSync();
+      }
+    }, 800);
+    return () => clearTimeout(t);
+  }, [clientId, onSync, lastSyncAt]);
 
   return (
     <div style={{ background: C.bg, minHeight: "100vh", color: C.text, fontFamily: "'DM Sans', -apple-system, sans-serif", padding: "0 0 60px" }}>
@@ -38,34 +66,57 @@ export default function DashboardLayout({ activeTab, onTabChange, clientName, cl
           {/* Breadcrumb + actions */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              {/* Back */}
               <button
                 onClick={() => navigate(clientId ? `/clients/${clientId}` : "/clients")}
                 style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 7, border: `1px solid ${C.border}`, background: "transparent", cursor: "pointer", color: C.textMuted, fontSize: 12, fontFamily: "inherit" }}
               >
                 <ArrowLeft size={13} /> Clientes
               </button>
-
               <span style={{ color: C.textDim, fontSize: 13 }}>/</span>
-
-              {/* System brand (small) */}
               <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
                 <div style={{ width: 24, height: 24, borderRadius: 6, background: `linear-gradient(135deg, ${C.primary}, ${C.primaryLight})`, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 8, color: "#fff", letterSpacing: "-0.02em", flexShrink: 0 }}>
                   CRT
                 </div>
                 <span style={{ fontSize: 12, color: C.textDim, fontWeight: 600 }}>CRT Ecosystem</span>
               </div>
-
               <span style={{ color: C.textDim, fontSize: 13 }}>/</span>
-
-              {/* Client name */}
-              <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>
-                {clientName || "Cliente"}
-              </span>
+              <span style={{ fontSize: 14, fontWeight: 700, color: C.text }}>{clientName || "Cliente"}</span>
             </div>
 
-            {/* Right actions */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {/* Right actions: sync + logout */}
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {/* Sync section */}
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                {syncError && (
+                  <span title={syncError} style={{ display: "flex", color: C.orange }}>
+                    <AlertCircle size={13} />
+                  </span>
+                )}
+                {lastSyncAt && (
+                  <span style={{ fontSize: 10, color: C.textDim, whiteSpace: "nowrap" }}>
+                    {formatRelative(lastSyncAt)}
+                  </span>
+                )}
+                <button
+                  onClick={() => onSync && onSync()}
+                  disabled={syncing}
+                  title="Sincronizar dados das plataformas"
+                  style={{
+                    display: "flex", alignItems: "center", gap: 5,
+                    padding: "5px 10px", borderRadius: 7,
+                    border: `1px solid ${syncing ? C.primary + "60" : C.border}`,
+                    background: syncing ? C.primary + "15" : "transparent",
+                    cursor: syncing ? "default" : "pointer",
+                    color: syncing ? C.primaryLight : C.textMuted,
+                    fontSize: 11, fontFamily: "inherit",
+                    transition: "all 0.2s",
+                  }}
+                >
+                  <RefreshCw size={12} style={{ animation: syncing ? "spin 1s linear infinite" : "none" }} />
+                  {syncing ? "Sincronizando…" : "Sincronizar"}
+                </button>
+              </div>
+
               <span style={{ fontSize: 11, color: C.textMuted }}>{user?.name}</span>
               <button onClick={logout} title="Sair" style={{ display: "flex", padding: 6, borderRadius: 7, border: `1px solid ${C.border}`, background: "transparent", cursor: "pointer", color: C.textMuted }}>
                 <LogOut size={13} />
@@ -82,7 +133,7 @@ export default function DashboardLayout({ activeTab, onTabChange, clientName, cl
               <h1 style={{ margin: 0, fontSize: 20, fontWeight: 800, letterSpacing: "-0.02em", color: C.text }}>
                 {clientName || "Dashboard do Cliente"}
               </h1>
-              <p style={{ margin: 0, fontSize: 11, color: C.textMuted }}>Dashboard de Mídias Sociais · Abril/2025 a Janeiro/2026</p>
+              <p style={{ margin: 0, fontSize: 11, color: C.textMuted }}>Dashboard de Mídias Sociais · Dados atualizados em tempo real</p>
             </div>
           </div>
 
@@ -101,11 +152,13 @@ export default function DashboardLayout({ activeTab, onTabChange, clientName, cl
         </div>
       </div>
 
+      {/* Spin keyframe */}
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+
       {/* Content */}
       <div style={{ maxWidth: 1200, margin: "0 auto", padding: "22px 24px" }}>
         {children}
       </div>
-
     </div>
   );
 }
