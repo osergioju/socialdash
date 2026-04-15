@@ -20,6 +20,8 @@ app.use(helmet());
 // ─── CORS (ANTES DE TUDO) ────────────────────────────────────────────────────
 const allowedOrigins = [
   "http://localhost:5173",
+  "http://comunity.crtcomunicacao.com.br",
+  "https://comunity.crtcomunicacao.com.br",
 ];
 
 app.use(cors({
