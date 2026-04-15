@@ -30,7 +30,9 @@ export default function Ga4Tab() {
   if (error)   return <ErrorState message={error} />;
 
   const { metrics, pages, origins } = data;
-  const m = metrics[mi];
+  if (!metrics?.length) return <ErrorState message="Nenhum dado disponível" />;
+  const safeMi = Math.min(mi, metrics.length - 1);
+  const m = metrics[safeMi];
   const uAtivos = metrics.map(x => x.usuariosAtivos);
   const novos   = metrics.map(x => x.novosUsuarios);
   const sessoes = metrics.map(x => x.sessoes);
@@ -47,7 +49,7 @@ export default function Ga4Tab() {
   }));
 
   // Pages table
-  const monthKey = metrics[mi]?.month;
+  const monthKey = metrics[safeMi]?.month;
   const paginasRows = pages.map(p => {
     const pm = p.metrics.find(pm => pm.month === monthKey);
     return [p.label, pm?.views != null ? fmt(pm.views) : "—", pm?.tempoMedio != null ? pm.tempoMedio + "s" : "—"];
@@ -63,15 +65,15 @@ export default function Ga4Tab() {
   return (
     <>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(145px, 1fr))", gap: 10, marginBottom: 20 }}>
-        <MetricCard title="Usuários Ativos"  value={fmt(m.usuariosAtivos)}        variation={calcVar(uAtivos, mi)} icon={Users}            color={C.ga4}     small />
-        <MetricCard title="Novos Usuários"   value={fmt(m.novosUsuarios)}         variation={calcVar(novos, mi)}   icon={Users}            color={C.green}   small />
-        <MetricCard title="Sessões"          value={fmt(m.sessoes)}               variation={calcVar(sessoes, mi)} icon={Activity}         color={C.primary} small />
-        <MetricCard title="Taxa Engaj."      value={m.taxaEngajamento + "%"}      variation={calcVar(txEng, mi)}   icon={MousePointerClick} color={C.accent} small />
+        <MetricCard title="Usuários Ativos"  value={fmt(m.usuariosAtivos)}        variation={calcVar(uAtivos, safeMi)} icon={Users}            color={C.ga4}     small />
+        <MetricCard title="Novos Usuários"   value={fmt(m.novosUsuarios)}         variation={calcVar(novos, safeMi)}   icon={Users}            color={C.green}   small />
+        <MetricCard title="Sessões"          value={fmt(m.sessoes)}               variation={calcVar(sessoes, safeMi)} icon={Activity}         color={C.primary} small />
+        <MetricCard title="Taxa Engaj."      value={m.taxaEngajamento + "%"}      variation={calcVar(txEng, safeMi)}   icon={MousePointerClick} color={C.accent} small />
         <MetricCard title="Tempo Médio"      value={m.tempoMedioEngajamento + "s"} variation={null}                icon={Clock}            color={C.orange}  small />
-        <MetricCard title="Num. Eventos"     value={fmt(m.numEventos)}            variation={calcVar(eventos, mi)} icon={Activity}         color={C.purple}  small />
+        <MetricCard title="Num. Eventos"     value={fmt(m.numEventos)}            variation={calcVar(eventos, safeMi)} icon={Activity}         color={C.purple}  small />
       </div>
 
-      <MonthSelector months={metrics} selected={mi} onSelect={setMi} color={C.ga4} />
+      <MonthSelector months={metrics} selected={safeMi} onSelect={setMi} color={C.ga4} />
 
       <SectionHeader icon={Users} title="Usuários & Sessões" subtitle="Evolução mensal" color={C.ga4} />
       <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "22px 18px", marginBottom: 12 }}>
@@ -112,11 +114,11 @@ export default function Ga4Tab() {
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
         <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: 18 }}>
-          <h4 style={{ fontSize: 12, color: C.textMuted, margin: "0 0 10px", fontWeight: 600 }}>Páginas Mais Acessadas — {metrics[mi]?.monthLabel}</h4>
+          <h4 style={{ fontSize: 12, color: C.textMuted, margin: "0 0 10px", fontWeight: 600 }}>Páginas Mais Acessadas — {metrics[safeMi]?.monthLabel}</h4>
           <DataTable headers={["Página", "Views", "Tempo Médio"]} rows={paginasRows} />
         </div>
         <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: 18 }}>
-          <h4 style={{ fontSize: 12, color: C.textMuted, margin: "0 0 10px", fontWeight: 600 }}>Origens de Tráfego — {metrics[mi]?.monthLabel}</h4>
+          <h4 style={{ fontSize: 12, color: C.textMuted, margin: "0 0 10px", fontWeight: 600 }}>Origens de Tráfego — {metrics[safeMi]?.monthLabel}</h4>
           <DataTable headers={["Fonte", "Sessões", "Taxa Eng.", "Tempo"]} rows={origensRows} />
         </div>
       </div>

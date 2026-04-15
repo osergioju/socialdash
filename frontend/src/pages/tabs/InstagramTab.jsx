@@ -30,7 +30,9 @@ export default function InstagramTab() {
   if (error)   return <ErrorState message={error} />;
 
   const { metrics, cities, themes } = data;
-  const m = metrics[mi];
+  if (!metrics?.length) return <ErrorState message="Nenhum dado disponível" />;
+  const safeMi = Math.min(mi, metrics.length - 1);
+  const m = metrics[safeMi];
   const segs      = metrics.map(x => x.seguidores);
   const alcances  = metrics.map(x => x.alcanceOrganico);
   const vizs      = metrics.map(x => x.visualizacoes);
@@ -49,21 +51,21 @@ export default function InstagramTab() {
 
   // City chart for selected month
   const cityData = cities
-    .map(c => ({ cidade: c.name.split(",")[0], seguidores: c.metrics.find(cm => cm.month === metrics[mi]?.month)?.seguidores ?? 0 }))
+    .map(c => ({ cidade: c.name.split(",")[0], seguidores: c.metrics.find(cm => cm.month === metrics[safeMi]?.month)?.seguidores ?? 0 }))
     .sort((a, b) => b.seguidores - a.seguidores);
 
   return (
     <>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(145px, 1fr))", gap: 10, marginBottom: 20 }}>
-        <MetricCard title="Seguidores"     value={m.seguidores.toLocaleString()}    variation={calcVar(segs, mi)}     icon={Users}            color={C.instagram} small />
-        <MetricCard title="Alcance Org."   value={fmt(m.alcanceOrganico)}           variation={calcVar(alcances, mi)} icon={Eye}              color={C.green}     small />
-        <MetricCard title="Visualizações"  value={fmt(m.visualizacoes)}             variation={calcVar(vizs, mi)}     icon={Activity}         color={C.purple}    small />
-        <MetricCard title="Interações"     value={m.interacoes.toString()}          variation={calcVar(interacs, mi)} icon={Heart}            color={C.accent}    small />
-        <MetricCard title="Visitas Perfil" value={m.visitasPerfil.toString()}       variation={calcVar(visitas, mi)}  icon={MousePointerClick} color={C.primaryLight} small />
-        <MetricCard title="Reels Inter."   value={m.reelsInteracoes.toString()}     variation={calcVar(reelsInt, mi)} icon={Video}            color={C.red}       small />
+        <MetricCard title="Seguidores"     value={m.seguidores.toLocaleString()}    variation={calcVar(segs, safeMi)}     icon={Users}            color={C.instagram} small />
+        <MetricCard title="Alcance Org."   value={fmt(m.alcanceOrganico)}           variation={calcVar(alcances, safeMi)} icon={Eye}              color={C.green}     small />
+        <MetricCard title="Visualizações"  value={fmt(m.visualizacoes)}             variation={calcVar(vizs, safeMi)}     icon={Activity}         color={C.purple}    small />
+        <MetricCard title="Interações"     value={m.interacoes.toString()}          variation={calcVar(interacs, safeMi)} icon={Heart}            color={C.accent}    small />
+        <MetricCard title="Visitas Perfil" value={m.visitasPerfil.toString()}       variation={calcVar(visitas, safeMi)}  icon={MousePointerClick} color={C.primaryLight} small />
+        <MetricCard title="Reels Inter."   value={m.reelsInteracoes.toString()}     variation={calcVar(reelsInt, safeMi)} icon={Video}            color={C.red}       small />
       </div>
 
-      <MonthSelector months={metrics} selected={mi} onSelect={setMi} color={C.instagram} />
+      <MonthSelector months={metrics} selected={safeMi} onSelect={setMi} color={C.instagram} />
 
       <SectionHeader icon={Eye} title="Alcance & Visualizações" subtitle="Evolução orgânica mensal" color={C.instagram} />
       <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "22px 18px", marginBottom: 12 }}>
@@ -125,7 +127,7 @@ export default function InstagramTab() {
         </ResponsiveContainer>
       </div>
 
-      <SectionHeader icon={Users} title="Engajamento Detalhado" subtitle={`Mês selecionado: ${metrics[mi]?.monthLabel}`} color={C.accent} />
+      <SectionHeader icon={Users} title="Engajamento Detalhado" subtitle={`Mês selecionado: ${metrics[safeMi]?.monthLabel}`} color={C.accent} />
       <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "22px 18px", marginBottom: 12 }}>
         <DataTable
           headers={["Métrica", "Valor"]}
@@ -140,7 +142,7 @@ export default function InstagramTab() {
         />
       </div>
 
-      <SectionHeader icon={Users} title="Top Cidades — Seguidores" subtitle={`Por número de seguidores em ${metrics[mi]?.monthLabel}`} color={C.instagram} />
+      <SectionHeader icon={Users} title="Top Cidades — Seguidores" subtitle={`Por número de seguidores em ${metrics[safeMi]?.monthLabel}`} color={C.instagram} />
       <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "22px 18px" }}>
         <ResponsiveContainer width="100%" height={240}>
           <BarChart data={cityData} layout="vertical" margin={{ left: 10, right: 20 }}>

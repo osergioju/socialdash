@@ -29,13 +29,16 @@ export default function LinkedinTab() {
   if (error)   return <ErrorState message={error} />;
 
   const { metrics, cities, industries, roles } = data;
-  const m = metrics[mi];
+  if (!metrics?.length) return <ErrorState message="Nenhum dado disponível" />;
+  const safeMi = Math.min(mi, metrics.length - 1);
+  const m = metrics[safeMi];
   const segs  = metrics.map(x => x.seguidores);
   const alcs  = metrics.map(x => x.alcance);
   const engs  = metrics.map(x => x.engajamento);
   const clis  = metrics.map(x => x.cliques);
   const reacs = metrics.map(x => x.reacoes);
   const imps  = metrics.map(x => x.impressoes);
+
 
   const liData = metrics.map(x => ({
     mes: x.monthLabel?.split("/")[0],
@@ -46,7 +49,7 @@ export default function LinkedinTab() {
   }));
 
   const cityData = cities
-    .map(c => ({ cidade: c.name.split(",")[0], seguidores: c.metrics.find(cm => cm.month === metrics[mi]?.month)?.seguidores ?? 0 }))
+    .map(c => ({ cidade: c.name.split(",")[0], seguidores: c.metrics.find(cm => cm.month === metrics[safeMi]?.month)?.seguidores ?? 0 }))
     .sort((a, b) => b.seguidores - a.seguidores);
 
   const PIE_COLORS = [C.linkedin, C.linkedinLight, C.primary, C.primaryLight, C.cyan];
@@ -54,15 +57,15 @@ export default function LinkedinTab() {
   return (
     <>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(145px, 1fr))", gap: 10, marginBottom: 20 }}>
-        <MetricCard title="Seguidores"  value={m.seguidores.toLocaleString()} variation={calcVar(segs, mi)}  icon={Users}            color={C.linkedin} small />
-        <MetricCard title="Alcance"     value={fmt(m.alcance)}               variation={calcVar(alcs, mi)}  icon={Eye}              color={C.linkedinLight} small />
-        <MetricCard title="Impressões"  value={fmt(m.impressoes)}            variation={calcVar(imps, mi)}  icon={BarChart3}        color={C.primary}  small />
-        <MetricCard title="Engajamento" value={fmt(m.engajamento)}           variation={calcVar(engs, mi)}  icon={Heart}            color={C.accent}   small />
-        <MetricCard title="Cliques"     value={fmt(m.cliques)}               variation={calcVar(clis, mi)}  icon={MousePointerClick} color={C.green}   small />
-        <MetricCard title="Reações"     value={fmt(m.reacoes)}               variation={calcVar(reacs, mi)} icon={Heart}            color={C.orange}   small />
+        <MetricCard title="Seguidores"  value={m.seguidores.toLocaleString()} variation={calcVar(segs, safeMi)}  icon={Users}            color={C.linkedin} small />
+        <MetricCard title="Alcance"     value={fmt(m.alcance)}               variation={calcVar(alcs, safeMi)}  icon={Eye}              color={C.linkedinLight} small />
+        <MetricCard title="Impressões"  value={fmt(m.impressoes)}            variation={calcVar(imps, safeMi)}  icon={BarChart3}        color={C.primary}  small />
+        <MetricCard title="Engajamento" value={fmt(m.engajamento)}           variation={calcVar(engs, safeMi)}  icon={Heart}            color={C.accent}   small />
+        <MetricCard title="Cliques"     value={fmt(m.cliques)}               variation={calcVar(clis, safeMi)}  icon={MousePointerClick} color={C.green}   small />
+        <MetricCard title="Reações"     value={fmt(m.reacoes)}               variation={calcVar(reacs, safeMi)} icon={Heart}            color={C.orange}   small />
       </div>
 
-      <MonthSelector months={metrics} selected={mi} onSelect={setMi} color={C.linkedin} />
+      <MonthSelector months={metrics} selected={safeMi} onSelect={setMi} color={C.linkedin} />
 
       <SectionHeader icon={Eye} title="Alcance & Impressões" subtitle="Evolução mensal" color={C.linkedin} />
       <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "22px 18px", marginBottom: 12 }}>
@@ -121,7 +124,7 @@ export default function LinkedinTab() {
         </div>
       </div>
 
-      <SectionHeader icon={Users} title="Top Regiões — Seguidores" subtitle={`Por número de seguidores em ${metrics[mi]?.monthLabel}`} color={C.linkedin} />
+      <SectionHeader icon={Users} title="Top Regiões — Seguidores" subtitle={`Por número de seguidores em ${metrics[safeMi]?.monthLabel}`} color={C.linkedin} />
       <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "22px 18px" }}>
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={cityData} layout="vertical" margin={{ left: 10, right: 20 }}>
