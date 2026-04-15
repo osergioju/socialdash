@@ -30,7 +30,7 @@ const PLATFORM_CONFIG = {
     scopes: "pages_show_list,instagram_basic,instagram_manage_insights,instagram_manage_comments,pages_read_engagement,business_management",
     clientId: () => process.env.META_APP_ID,
     secret: () => process.env.META_APP_SECRET,
-    redirectPath: "/api/oauth/meta/callback",
+    redirectPath: "/oauth/meta/callback",
   },
   GOOGLE_ANALYTICS: {
     authUrl: "https://accounts.google.com/o/oauth2/v2/auth",
@@ -38,7 +38,7 @@ const PLATFORM_CONFIG = {
     scopes: "https://www.googleapis.com/auth/analytics.readonly https://www.googleapis.com/auth/userinfo.email",
     clientId: () => process.env.GOOGLE_CLIENT_ID,
     secret: () => process.env.GOOGLE_CLIENT_SECRET,
-    redirectPath: "/api/oauth/google/callback",
+    redirectPath: "/oauth/google/callback",
   },
   LINKEDIN: {
     authUrl: "https://www.linkedin.com/oauth/v2/authorization",
@@ -46,7 +46,7 @@ const PLATFORM_CONFIG = {
     scopes: "r_organization_social rw_organization_admin r_basicprofile r_emailaddress",
     clientId: () => process.env.LINKEDIN_CLIENT_ID,
     secret: () => process.env.LINKEDIN_CLIENT_SECRET,
-    redirectPath: "/api/oauth/linkedin/callback",
+    redirectPath: "/oauth/linkedin/callback",
   },
 };
 
