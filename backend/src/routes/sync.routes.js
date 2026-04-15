@@ -5,7 +5,7 @@ const { authMiddleware } = require("../middlewares/auth.middleware");
 const router = Router();
 router.use(authMiddleware);
 
-router.post("/:clientId",        syncController.triggerSync);
-router.get("/:clientId/status",  syncController.getSyncStatus);
+router.post("/:clientId", syncController.triggerSync);
+router.get("/:clientId/status", syncController.getSyncStatus);
 
 module.exports = router;
