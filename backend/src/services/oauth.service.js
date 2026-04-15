@@ -191,32 +191,30 @@ async function handleCallback(platform, code, stateToken) {
   // 3. Fetch account info
   const info = await fetchAccountInfo(platform, accessToken);
 
-  // 4. Upsert connection with encrypted tokens
-  const connection = await prisma.platformConnection.upsert({
+  // 4. Save connection with encrypted tokens (find + update/create to avoid ON CONFLICT issues)
+  const tokenData = {
+    status: "CONNECTED",
+    accessToken: encrypt(accessToken),
+    refreshToken: refreshToken ? encrypt(refreshToken) : null,
+    expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000) : null,
+    accountId: info.accountId || null,
+    accountName: info.accountName || null,
+    accountEmail: info.accountEmail || null,
+    connectedAt: new Date(),
+  };
+
+  const existing = await prisma.platformConnection.findUnique({
     where: { clientId_platform: { clientId, platform } },
-    update: {
-      status: "CONNECTED",
-      accessToken: encrypt(accessToken),
-      refreshToken: refreshToken ? encrypt(refreshToken) : null,
-      expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000) : null,
-      accountId: info.accountId || null,
-      accountName: info.accountName || null,
-      accountEmail: info.accountEmail || null,
-      connectedAt: new Date(),
-    },
-    create: {
-      clientId,
-      platform,
-      status: "CONNECTED",
-      accessToken: encrypt(accessToken),
-      refreshToken: refreshToken ? encrypt(refreshToken) : null,
-      expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000) : null,
-      accountId: info.accountId || null,
-      accountName: info.accountName || null,
-      accountEmail: info.accountEmail || null,
-      connectedAt: new Date(),
-    },
   });
+
+  const connection = existing
+    ? await prisma.platformConnection.update({
+        where: { clientId_platform: { clientId, platform } },
+        data: tokenData,
+      })
+    : await prisma.platformConnection.create({
+        data: { clientId, platform, ...tokenData },
+      });
 
   return { clientId, platform, accountName: info.accountName };
 }
