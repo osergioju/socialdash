@@ -270,47 +270,32 @@ async function syncMeta(clientId, conn) {
     }
   }
 
-  // Upsert instagram metric
-  await prisma.instagramMetric.upsert({
-    where: { clientId_month: { clientId, month: mk } },
-    update: {
-      monthLabel: ml,
-      seguidores,
-      novosSeguidores,
-      alcanceOrganico: insightMap.reach || 0,
-      visualizacoes: insightMap.impressions || 0,
-      interacoes: totalInteracoes,
-      visitasPerfil: insightMap.profile_views || 0,
-      postagensTotal: feedPosts.length + reels.length,
-      reelsQtd: reels.length,
-      reelsAlcance: reelsReach,
-      reelsInteracoes: reelsInteractions,
-      storiesQtd: stories.length,
-      storiesViews,
-      curtidasPosts: totalLikes,
-      comentariosPosts: totalComments,
-      salvamentosPosts: totalSaved,
-      compartilhamentosPosts: totalShares,
-    },
-    create: {
-      clientId, month: mk, monthLabel: ml,
-      seguidores, novosSeguidores,
-      alcanceOrganico: insightMap.reach || 0,
-      visualizacoes: insightMap.impressions || 0,
-      interacoes: totalInteracoes,
-      visitasPerfil: insightMap.profile_views || 0,
-      postagensTotal: feedPosts.length + reels.length,
-      reelsQtd: reels.length,
-      reelsAlcance: reelsReach,
-      reelsInteracoes: reelsInteractions,
-      storiesQtd: stories.length,
-      storiesViews,
-      curtidasPosts: totalLikes,
-      comentariosPosts: totalComments,
-      salvamentosPosts: totalSaved,
-      compartilhamentosPosts: totalShares,
-    },
-  });
+  // Upsert instagram metric (manual find+update/create for old Postgres compatibility)
+  const igData = {
+    monthLabel: ml,
+    seguidores,
+    novosSeguidores,
+    alcanceOrganico: insightMap.reach || 0,
+    visualizacoes: insightMap.impressions || 0,
+    interacoes: totalInteracoes,
+    visitasPerfil: insightMap.profile_views || 0,
+    postagensTotal: feedPosts.length + reels.length,
+    reelsQtd: reels.length,
+    reelsAlcance: reelsReach,
+    reelsInteracoes: reelsInteractions,
+    storiesQtd: stories.length,
+    storiesViews,
+    curtidasPosts: totalLikes,
+    comentariosPosts: totalComments,
+    salvamentosPosts: totalSaved,
+    compartilhamentosPosts: totalShares,
+  };
+  const existingIg = await prisma.instagramMetric.findUnique({ where: { clientId_month: { clientId, month: mk } } });
+  if (existingIg) {
+    await prisma.instagramMetric.update({ where: { id: existingIg.id }, data: igData });
+  } else {
+    await prisma.instagramMetric.create({ data: { clientId, month: mk, ...igData } });
+  }
 
   // City audience data
   const audienceRes = await httpGet(
@@ -321,16 +306,11 @@ async function syncMeta(clientId, conn) {
     const cityData = audienceRes.data[0].values[0].value;
     for (const [cityKey, count] of Object.entries(cityData).slice(0, 10)) {
       const cityName = cityKey.replace(/_/g, " ");
-      const city = await prisma.city.upsert({
-        where: { clientId_name_platform: { clientId, name: cityName, platform: "INSTAGRAM" } },
-        update: {},
-        create: { clientId, name: cityName, platform: "INSTAGRAM" },
-      });
-      await prisma.cityMetric.upsert({
-        where: { cityId_month: { cityId: city.id, month: mk } },
-        update: { seguidores: count },
-        create: { cityId: city.id, month: mk, seguidores: count },
-      });
+      let city = await prisma.city.findUnique({ where: { clientId_name_platform: { clientId, name: cityName, platform: "INSTAGRAM" } } });
+      if (!city) city = await prisma.city.create({ data: { clientId, name: cityName, platform: "INSTAGRAM" } });
+      const existingCm = await prisma.cityMetric.findUnique({ where: { cityId_month: { cityId: city.id, month: mk } } });
+      if (existingCm) await prisma.cityMetric.update({ where: { id: existingCm.id }, data: { seguidores: count } });
+      else await prisma.cityMetric.create({ data: { cityId: city.id, month: mk, seguidores: count } });
     }
   }
 
@@ -405,27 +385,21 @@ async function syncLinkedin(clientId, conn) {
   const reacoes = shareEl.likeCount || 0;
   const postagens = shareEl.shareCount || 0;
 
-  await prisma.linkedinMetric.upsert({
-    where: { clientId_month: { clientId, month: mk } },
-    update: { monthLabel: ml, seguidores, novosSeguidores, alcance, impressoes, engajamento, cliques, reacoes, postagens },
-    create: { clientId, month: mk, monthLabel: ml, seguidores, novosSeguidores, alcance, impressoes, engajamento, cliques, reacoes, postagens },
-  });
+  const liData = { monthLabel: ml, seguidores, novosSeguidores, alcance, impressoes, engajamento, cliques, reacoes, postagens };
+  const existingLi = await prisma.linkedinMetric.findUnique({ where: { clientId_month: { clientId, month: mk } } });
+  if (existingLi) await prisma.linkedinMetric.update({ where: { id: existingLi.id }, data: liData });
+  else await prisma.linkedinMetric.create({ data: { clientId, month: mk, ...liData } });
 
   // Geo data (cities/regions)
   if (followerStats.followerCountsByGeo) {
     for (const geo of followerStats.followerCountsByGeo.slice(0, 10)) {
       const cityName = geo.geo?.name || geo.geoCountryName || "Desconhecido";
       const count = geo.followerCounts?.organicFollowerCount || 0;
-      const city = await prisma.city.upsert({
-        where: { clientId_name_platform: { clientId, name: cityName, platform: "LINKEDIN" } },
-        update: {},
-        create: { clientId, name: cityName, platform: "LINKEDIN" },
-      });
-      await prisma.cityMetric.upsert({
-        where: { cityId_month: { cityId: city.id, month: mk } },
-        update: { seguidores: count },
-        create: { cityId: city.id, month: mk, seguidores: count },
-      });
+      let city = await prisma.city.findUnique({ where: { clientId_name_platform: { clientId, name: cityName, platform: "LINKEDIN" } } });
+      if (!city) city = await prisma.city.create({ data: { clientId, name: cityName, platform: "LINKEDIN" } });
+      const existingLiCm = await prisma.cityMetric.findUnique({ where: { cityId_month: { cityId: city.id, month: mk } } });
+      if (existingLiCm) await prisma.cityMetric.update({ where: { id: existingLiCm.id }, data: { seguidores: count } });
+      else await prisma.cityMetric.create({ data: { cityId: city.id, month: mk, seguidores: count } });
     }
   }
 
@@ -434,22 +408,18 @@ async function syncLinkedin(clientId, conn) {
     for (const ind of followerStats.followerCountsByIndustry.slice(0, 10)) {
       const nome = ind.industry?.name || `Indústria ${ind.industry?.id}`;
       const seg = ind.followerCounts?.organicFollowerCount || 0;
-      await prisma.linkedinIndustry.upsert({
-        where: { clientId_nome: { clientId, nome } },
-        update: { seguidores: seg },
-        create: { clientId, nome, seguidores: seg },
-      });
+      const existingInd = await prisma.linkedinIndustry.findUnique({ where: { clientId_nome: { clientId, nome } } });
+      if (existingInd) await prisma.linkedinIndustry.update({ where: { id: existingInd.id }, data: { seguidores: seg } });
+      else await prisma.linkedinIndustry.create({ data: { clientId, nome, seguidores: seg } });
     }
   }
   if (followerStats.followerCountsByFunction) {
     for (const fn of followerStats.followerCountsByFunction.slice(0, 10)) {
       const nome = fn.function?.name || `Função ${fn.function?.id}`;
       const seg = fn.followerCounts?.organicFollowerCount || 0;
-      await prisma.linkedinRole.upsert({
-        where: { clientId_nome: { clientId, nome } },
-        update: { seguidores: seg },
-        create: { clientId, nome, seguidores: seg },
-      });
+      const existingRole = await prisma.linkedinRole.findUnique({ where: { clientId_nome: { clientId, nome } } });
+      if (existingRole) await prisma.linkedinRole.update({ where: { id: existingRole.id }, data: { seguidores: seg } });
+      else await prisma.linkedinRole.create({ data: { clientId, nome, seguidores: seg } });
     }
   }
 
@@ -531,11 +501,10 @@ async function syncGa4(clientId, conn) {
   const viewsPorSessao = parseFloat(get(7).toFixed(2));
   const numEventos = Math.round(get(8));
 
-  await prisma.ga4Metric.upsert({
-    where: { clientId_month: { clientId, month: mk } },
-    update: { monthLabel: ml, usuariosAtivos, novosUsuarios, usuariosTotais, sessoes, sessoesEngajadas, taxaEngajamento, tempoMedioEngajamento, viewsPorSessao, numEventos },
-    create: { clientId, month: mk, monthLabel: ml, usuariosAtivos, novosUsuarios, usuariosTotais, sessoes, sessoesEngajadas, taxaEngajamento, tempoMedioEngajamento, viewsPorSessao, numEventos },
-  });
+  const ga4Data = { monthLabel: ml, usuariosAtivos, novosUsuarios, usuariosTotais, sessoes, sessoesEngajadas, taxaEngajamento, tempoMedioEngajamento, viewsPorSessao, numEventos };
+  const existingGa4 = await prisma.ga4Metric.findUnique({ where: { clientId_month: { clientId, month: mk } } });
+  if (existingGa4) await prisma.ga4Metric.update({ where: { id: existingGa4.id }, data: ga4Data });
+  else await prisma.ga4Metric.create({ data: { clientId, month: mk, ...ga4Data } });
 
   // Pages report
   const pagesReport = await httpPost(
@@ -555,16 +524,12 @@ async function syncGa4(clientId, conn) {
     const views = Math.round(parseFloat(row.metricValues?.[0]?.value || "0"));
     const tempo = Math.round(parseFloat(row.metricValues?.[1]?.value || "0") / Math.max(views, 1));
     const label = pagina === "/" ? "Home" : pagina.replace(/^\/|\/$/g, "").split("/").pop() || pagina;
-    const page = await prisma.ga4Page.upsert({
-      where: { clientId_pagina: { clientId, pagina } },
-      update: { label },
-      create: { clientId, pagina, label },
-    });
-    await prisma.ga4PageMetric.upsert({
-      where: { pageId_month: { pageId: page.id, month: mk } },
-      update: { views, tempoMedio: tempo },
-      create: { pageId: page.id, month: mk, views, tempoMedio: tempo },
-    });
+    let page = await prisma.ga4Page.findUnique({ where: { clientId_pagina: { clientId, pagina } } });
+    if (page) await prisma.ga4Page.update({ where: { id: page.id }, data: { label } });
+    else page = await prisma.ga4Page.create({ data: { clientId, pagina, label } });
+    const existingPm = await prisma.ga4PageMetric.findUnique({ where: { pageId_month: { pageId: page.id, month: mk } } });
+    if (existingPm) await prisma.ga4PageMetric.update({ where: { id: existingPm.id }, data: { views, tempoMedio: tempo } });
+    else await prisma.ga4PageMetric.create({ data: { pageId: page.id, month: mk, views, tempoMedio: tempo } });
   }
 
   // Origins/traffic sources report
@@ -591,16 +556,11 @@ async function syncGa4(clientId, conn) {
     const taxaEng = parseFloat((parseFloat(row.metricValues?.[1]?.value || "0") * 100).toFixed(1));
     const users = Math.round(parseFloat(row.metricValues?.[3]?.value || "1"));
     const tempoMedio = Math.round(parseFloat(row.metricValues?.[2]?.value || "0") / Math.max(users, 1));
-    const origin = await prisma.ga4Origin.upsert({
-      where: { clientId_fonte: { clientId, fonte } },
-      update: {},
-      create: { clientId, fonte },
-    });
-    await prisma.ga4OriginMetric.upsert({
-      where: { originId_month: { originId: origin.id, month: mk } },
-      update: { sessoes: sess, taxaEng, tempoMedio },
-      create: { originId: origin.id, month: mk, sessoes: sess, taxaEng, tempoMedio },
-    });
+    let origin = await prisma.ga4Origin.findUnique({ where: { clientId_fonte: { clientId, fonte } } });
+    if (!origin) origin = await prisma.ga4Origin.create({ data: { clientId, fonte } });
+    const existingOm = await prisma.ga4OriginMetric.findUnique({ where: { originId_month: { originId: origin.id, month: mk } } });
+    if (existingOm) await prisma.ga4OriginMetric.update({ where: { id: existingOm.id }, data: { sessoes: sess, taxaEng, tempoMedio } });
+    else await prisma.ga4OriginMetric.create({ data: { originId: origin.id, month: mk, sessoes: sess, taxaEng, tempoMedio } });
   }
 
   return { ok: true, month: mk };
