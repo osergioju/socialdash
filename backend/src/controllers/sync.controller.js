@@ -10,6 +10,7 @@ async function triggerSync(req, res) {
   }
 }
 
+
 async function getSyncStatus(req, res) {
   try {
     const { clientId } = req.params;

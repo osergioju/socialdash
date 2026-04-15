@@ -8,4 +8,5 @@ router.use(authMiddleware);
 router.post("/:clientId", syncController.triggerSync);
 router.get("/:clientId/status", syncController.getSyncStatus);
 
+
 module.exports = router;
