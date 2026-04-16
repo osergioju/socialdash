@@ -168,6 +168,13 @@ async function discoverInstagramAccount(token) {
   throw new Error("Nenhuma conta profissional do Instagram vinculada às Páginas do Facebook encontradas.");
 }
 
+const IG_PERIODS = [
+  { key: "last_15d", label: "15 dias", days: 15 },
+  { key: "last_30d", label: "30 dias", days: 30 },
+  { key: "last_60d", label: "60 dias", days: 60 },
+  { key: "last_90d", label: "90 dias", days: 90 },
+];
+
 async function syncMeta(clientId, conn) {
   const token = await getValidToken(conn);
   let meta = conn.metadata ? JSON.parse(conn.metadata) : {};
@@ -192,62 +199,89 @@ async function syncMeta(clientId, conn) {
   );
   const pageToken = pageTokenRes.access_token || token;
 
-  // Current follower count (only available live)
+  // Current follower count (only current snapshot available from API)
   const profileRes = await httpGet(
-    `https://graph.facebook.com/v19.0/${igId}?fields=followers_count,media_count`,
+    `https://graph.facebook.com/v19.0/${igId}?fields=followers_count`,
     pageToken
   );
   const currentFollowers = profileRes.followers_count || 0;
 
-  // Loop last 12 months
   const now = new Date();
-  const months = last12Months();
+  const since90 = Math.floor(new Date(now.getTime() - 90 * 24 * 3600 * 1000).getTime() / 1000);
+  const until = Math.floor(now.getTime() / 1000);
 
-  for (const { year, month } of months) {
-    const since = Math.floor(new Date(year, month - 1, 1).getTime() / 1000);
-    const until = Math.floor(new Date(year, month, 1).getTime() / 1000);
-    const mk = monthKey(year, month);
-    const ml = monthLabel(year, month);
-    const isCurrent = year === now.getFullYear() && month === now.getMonth() + 1;
+  // Fetch daily account insights for last 90 days (only window the API provides)
+  const dailyRes = await httpGet(
+    `https://graph.facebook.com/v19.0/${igId}/insights?metric=reach,impressions,profile_views&period=day&since=${since90}&until=${until}`,
+    pageToken
+  ).catch(() => ({ data: [] }));
 
-    // Monthly insights - reach, impressions, profile_views
-    const insightsRes = await httpGet(
-      `https://graph.facebook.com/v19.0/${igId}/insights?metric=reach,impressions,profile_views&period=month&since=${since}&until=${until}`,
-      pageToken
-    ).catch(() => ({ data: [] }));
-    const insightMap = {};
-    if (insightsRes.data) {
-      for (const m of insightsRes.data) {
-        // Find the value whose end_time falls within this month
-        const val = m.values?.find(v => {
-          const t = new Date(v.end_time);
-          const tMk = monthKey(t.getFullYear(), t.getMonth() + 1);
-          return tMk === mk;
-        }) || m.values?.[0];
-        insightMap[m.name] = val?.value || 0;
-      }
+  const daily = { reach: {}, impressions: {}, profile_views: {} };
+  for (const metric of (dailyRes.data || [])) {
+    for (const v of (metric.values || [])) {
+      const day = v.end_time?.substring(0, 10);
+      if (day && metric.name in daily) daily[metric.name][day] = (daily[metric.name][day] || 0) + v.value;
+    }
+  }
+
+  // Fetch daily net follower change (last 90 days)
+  const followerDailyRes = await httpGet(
+    `https://graph.facebook.com/v19.0/${igId}/insights?metric=follower_count&period=day&since=${since90}&until=${until}`,
+    pageToken
+  ).catch(() => ({ data: [] }));
+  const dailyFollowers = {};
+  for (const v of (followerDailyRes.data?.[0]?.values || [])) {
+    const day = v.end_time?.substring(0, 10);
+    if (day) dailyFollowers[day] = v.value || 0;
+  }
+
+  // Fetch all posts from last 90 days (media endpoint — full history available)
+  const mediaRes = await httpGet(
+    `https://graph.facebook.com/v19.0/${igId}/media?fields=id,media_type,timestamp,like_count,comments_count,shares_count,saved,reach,impressions&limit=200&since=${since90}&until=${until}`,
+    pageToken
+  ).catch(() => ({ data: [] }));
+  const allPosts = mediaRes.data || [];
+
+  // Delete old monthly records, keep only period records going forward
+  await prisma.instagramMetric.deleteMany({
+    where: { clientId, NOT: { month: { in: IG_PERIODS.map(p => p.key) } } },
+  });
+
+  // Compute and store aggregates for each period
+  for (const { key, label, days } of IG_PERIODS) {
+    const periodStart = new Date(now.getTime() - days * 24 * 3600 * 1000);
+    const periodStartStr = periodStart.toISOString().substring(0, 10);
+
+    // Sum daily insights
+    let reach = 0, impressions = 0, profileViews = 0, novosSeguidores = 0;
+    for (const [day, val] of Object.entries(daily.reach)) {
+      if (day >= periodStartStr) reach += val;
+    }
+    for (const [day, val] of Object.entries(daily.impressions)) {
+      if (day >= periodStartStr) impressions += val;
+    }
+    for (const [day, val] of Object.entries(daily.profile_views)) {
+      if (day >= periodStartStr) profileViews += val;
+    }
+    for (const [day, val] of Object.entries(dailyFollowers)) {
+      if (day >= periodStartStr && val > 0) novosSeguidores += val;
     }
 
-    // Media engagement for the month
-    const mediaRes = await httpGet(
-      `https://graph.facebook.com/v19.0/${igId}/media?fields=id,media_type,timestamp,like_count,comments_count,shares_count,saved,reach,impressions&limit=100&since=${since}&until=${until}`,
-      pageToken
-    ).catch(() => ({ data: [] }));
-    const posts = mediaRes.data || [];
-
+    // Aggregate posts for this period
     let feedCount = 0, reelsCount = 0, storiesCount = 0;
-    let totalLikes = 0, totalComments = 0, totalSaved = 0, totalShares = 0;
+    let likes = 0, comments = 0, saved = 0, shares = 0;
     let reelsReach = 0, reelsInteractions = 0, storiesViews = 0;
 
-    for (const p of posts) {
-      totalLikes += p.like_count || 0;
-      totalComments += p.comments_count || 0;
-      totalSaved += p.saved || 0;
-      totalShares += p.shares_count || 0;
+    for (const p of allPosts) {
+      if (new Date(p.timestamp) < periodStart) continue;
+      likes    += p.like_count || 0;
+      comments += p.comments_count || 0;
+      saved    += p.saved || 0;
+      shares   += p.shares_count || 0;
 
       if (p.media_type === "REEL") {
         reelsCount++;
-        reelsReach += p.reach || 0;
+        reelsReach        += p.reach || 0;
         reelsInteractions += (p.like_count || 0) + (p.comments_count || 0) + (p.saved || 0);
       } else if (p.media_type === "STORY") {
         storiesCount++;
@@ -257,48 +291,35 @@ async function syncMeta(clientId, conn) {
       }
     }
 
-    // New followers via daily follower_count metric (sum of positive daily deltas)
-    const followerInsights = await httpGet(
-      `https://graph.facebook.com/v19.0/${igId}/insights?metric=follower_count&period=day&since=${since}&until=${until}`,
-      pageToken
-    ).catch(() => ({ data: [] }));
-    let novosSeguidores = 0;
-    if (followerInsights.data?.[0]?.values) {
-      for (const v of followerInsights.data[0].values) {
-        if (v.value > 0) novosSeguidores += v.value;
-      }
-    }
-
     const igData = {
-      monthLabel: ml,
-      seguidores: isCurrent ? currentFollowers : 0, // historical counts not available from API
+      monthLabel: label,
+      seguidores: currentFollowers,
       novosSeguidores,
-      alcanceOrganico: insightMap.reach || 0,
-      visualizacoes: insightMap.impressions || 0,
-      interacoes: totalLikes + totalComments + totalSaved + totalShares,
-      visitasPerfil: insightMap.profile_views || 0,
+      alcanceOrganico: reach,
+      visualizacoes: impressions,
+      interacoes: likes + comments + saved + shares,
+      visitasPerfil: profileViews,
       postagensTotal: feedCount + reelsCount,
       reelsQtd: reelsCount,
       reelsAlcance: reelsReach,
       reelsInteracoes: reelsInteractions,
       storiesQtd: storiesCount,
       storiesViews,
-      curtidasPosts: totalLikes,
-      comentariosPosts: totalComments,
-      salvamentosPosts: totalSaved,
-      compartilhamentosPosts: totalShares,
+      curtidasPosts: likes,
+      comentariosPosts: comments,
+      salvamentosPosts: saved,
+      compartilhamentosPosts: shares,
     };
 
-    const existingIg = await prisma.instagramMetric.findUnique({ where: { clientId_month: { clientId, month: mk } } });
-    if (existingIg) {
-      await prisma.instagramMetric.update({ where: { id: existingIg.id }, data: igData });
+    const existing = await prisma.instagramMetric.findUnique({ where: { clientId_month: { clientId, month: key } } });
+    if (existing) {
+      await prisma.instagramMetric.update({ where: { id: existing.id }, data: igData });
     } else {
-      await prisma.instagramMetric.create({ data: { clientId, month: mk, ...igData } });
+      await prisma.instagramMetric.create({ data: { clientId, month: key, ...igData } });
     }
   }
 
-  // City audience data (lifetime snapshot — always current month)
-  const nowMk = monthKey(now.getFullYear(), now.getMonth() + 1);
+  // City audience — snapshot, store under "last_30d"
   const audienceRes = await httpGet(
     `https://graph.facebook.com/v19.0/${igId}/insights?metric=audience_city&period=lifetime`,
     pageToken
@@ -309,13 +330,13 @@ async function syncMeta(clientId, conn) {
       const cityName = cityKey.replace(/_/g, " ");
       let city = await prisma.city.findUnique({ where: { clientId_name_platform: { clientId, name: cityName, platform: "INSTAGRAM" } } });
       if (!city) city = await prisma.city.create({ data: { clientId, name: cityName, platform: "INSTAGRAM" } });
-      const existingCm = await prisma.cityMetric.findUnique({ where: { cityId_month: { cityId: city.id, month: nowMk } } });
+      const existingCm = await prisma.cityMetric.findUnique({ where: { cityId_month: { cityId: city.id, month: "last_30d" } } });
       if (existingCm) await prisma.cityMetric.update({ where: { id: existingCm.id }, data: { seguidores: count } });
-      else await prisma.cityMetric.create({ data: { cityId: city.id, month: nowMk, seguidores: count } });
+      else await prisma.cityMetric.create({ data: { cityId: city.id, month: "last_30d", seguidores: count } });
     }
   }
 
-  return { ok: true, months: months.length };
+  return { ok: true, periods: 4 };
 }
 
 // ─── LINKEDIN ─────────────────────────────────────────────────────────────────

@@ -19,13 +19,17 @@ export default function OverviewTab() {
 
   const { kpis, timeseries, growth } = data;
 
-  const merged = timeseries.instagram.map((ig, i) => ({
-    mes: ig.mes,
-    igSeg: ig.igSeg, igAlc: ig.igAlc,
-    liSeg: timeseries.linkedin[i]?.liSeg,
-    liAlc: timeseries.linkedin[i]?.liAlc,
+  // IG uses period buckets (15/30/60/90 dias); LI/GA4 use monthly records
+  const igData  = timeseries.instagram; // [{mes, igSeg, igAlc}, ...]
+  const liLen   = timeseries.linkedin.length;
+  const ga4Len  = timeseries.ga4.length;
+  const maxLen  = Math.max(liLen, ga4Len);
+  const merged  = Array.from({ length: maxLen }, (_, i) => ({
+    mes:      timeseries.linkedin[i]?.mes || timeseries.ga4[i]?.mes,
+    liSeg:    timeseries.linkedin[i]?.liSeg,
+    liAlc:    timeseries.linkedin[i]?.liAlc,
     usuarios: timeseries.ga4[i]?.usuarios,
-    sessoes: timeseries.ga4[i]?.sessoes,
+    sessoes:  timeseries.ga4[i]?.sessoes,
   }));
 
   return (
@@ -39,42 +43,58 @@ export default function OverviewTab() {
         <MetricCard title="Engaj. LI"      value={fmt(kpis.engajamentoLI.value)} variation={kpis.engajamentoLI.variation} icon={Heart} color={C.orange} />
       </div>
 
-      <SectionHeader icon={Users} title="Evolução de Seguidores" subtitle="Crescimento comparativo Instagram vs LinkedIn" color={C.primary} />
-      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "22px 18px", marginBottom: 28 }}>
-        <ResponsiveContainer width="100%" height={280}>
-          <ComposedChart data={merged}>
-            <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
-            <XAxis dataKey="mes" tick={{ fill: C.textMuted, fontSize: 11 }} axisLine={false} tickLine={false} />
-            <YAxis yAxisId="ig" orientation="left"  tick={{ fill: C.textMuted, fontSize: 10 }} axisLine={false} tickLine={false} />
-            <YAxis yAxisId="li" orientation="right" tick={{ fill: C.textMuted, fontSize: 10 }} axisLine={false} tickLine={false} />
-            <Tooltip content={<CustomTooltip />} /><Legend wrapperStyle={{ fontSize: 11 }} />
-            <Line yAxisId="ig" type="monotone" dataKey="igSeg" stroke={C.instagram} strokeWidth={3} dot={{ r: 4, fill: C.instagram }} name="Instagram" />
-            <Line yAxisId="li" type="monotone" dataKey="liSeg" stroke={C.linkedin}  strokeWidth={3} dot={{ r: 4, fill: C.linkedin }}  name="LinkedIn" />
-          </ComposedChart>
-        </ResponsiveContainer>
-        {(growth?.igTotal != null || growth?.liTotal != null) && (
-          <div style={{ display: "flex", justifyContent: "center", gap: 40, marginTop: 10 }}>
+      {/* Instagram: alcance por período (15/30/60/90 dias) */}
+      {igData.length > 0 && (
+        <>
+          <SectionHeader icon={Users} title="Instagram — Alcance por Período" subtitle="Acumulado nos últimos 15 / 30 / 60 / 90 dias" color={C.instagram} />
+          <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "22px 18px", marginBottom: 12 }}>
             {growth?.igTotal != null && (
-              <div style={{ textAlign: "center" }}>
-                <div style={{ fontSize: 10, color: C.textMuted }}>Instagram</div>
-                <div style={{ fontSize: 17, fontWeight: 700, color: C.instagram }}>
-                  +{growth.igTotal} <span style={{ fontSize: 11 }}>({growth.igPct}%)</span>
-                </div>
+              <div style={{ marginBottom: 12, paddingLeft: 8 }}>
+                <span style={{ fontSize: 11, color: C.textMuted }}>Novos seguidores (30 dias): </span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: C.instagram }}>+{growth.igTotal}</span>
               </div>
             )}
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={igData} barGap={4}>
+                <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+                <XAxis dataKey="mes" tick={{ fill: C.textMuted, fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: C.textMuted, fontSize: 10 }} axisLine={false} tickLine={false} />
+                <Tooltip content={<CustomTooltip />} /><Legend wrapperStyle={{ fontSize: 11 }} />
+                <Bar dataKey="igAlc" fill={C.instagram} name="Alcance Orgânico IG" radius={[4,4,0,0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </>
+      )}
+
+      {/* LinkedIn: evolução mensal de seguidores */}
+      {merged.length > 0 && (
+        <>
+          <SectionHeader icon={Users} title="LinkedIn — Evolução de Seguidores" subtitle="Crescimento mensal" color={C.linkedin} />
+          <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "22px 18px", marginBottom: 28 }}>
+            <ResponsiveContainer width="100%" height={220}>
+              <ComposedChart data={merged}>
+                <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+                <XAxis dataKey="mes" tick={{ fill: C.textMuted, fontSize: 11 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: C.textMuted, fontSize: 10 }} axisLine={false} tickLine={false} />
+                <Tooltip content={<CustomTooltip />} /><Legend wrapperStyle={{ fontSize: 11 }} />
+                <Line type="monotone" dataKey="liSeg" stroke={C.linkedin} strokeWidth={3} dot={{ r: 4, fill: C.linkedin }} name="Seguidores LI" />
+              </ComposedChart>
+            </ResponsiveContainer>
             {growth?.liTotal != null && (
-              <div style={{ textAlign: "center" }}>
-                <div style={{ fontSize: 10, color: C.textMuted }}>LinkedIn</div>
-                <div style={{ fontSize: 17, fontWeight: 700, color: C.linkedin }}>
-                  +{growth.liTotal} <span style={{ fontSize: 11 }}>({growth.liPct}%)</span>
-                </div>
+              <div style={{ textAlign: "center", marginTop: 8 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: C.linkedin }}>
+                  +{growth.liTotal}
+                  {growth.liPct != null && <span style={{ fontSize: 11, fontWeight: 400 }}> ({growth.liPct}%)</span>}
+                </span>
+                <span style={{ fontSize: 10, color: C.textMuted, marginLeft: 6 }}>no período</span>
               </div>
             )}
           </div>
-        )}
-      </div>
+        </>
+      )}
 
-      <SectionHeader icon={Eye} title="Alcance por Canal" subtitle="Volumetria mensal — Instagram vs LinkedIn" color={C.accent} />
+      <SectionHeader icon={Eye} title="Alcance por Canal" subtitle="Volumetria — LinkedIn mensal" color={C.accent} />
       <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "22px 18px", marginBottom: 28 }}>
         <ResponsiveContainer width="100%" height={260}>
           <BarChart data={merged} barGap={4}>
@@ -82,8 +102,7 @@ export default function OverviewTab() {
             <XAxis dataKey="mes" tick={{ fill: C.textMuted, fontSize: 11 }} axisLine={false} tickLine={false} />
             <YAxis tick={{ fill: C.textMuted, fontSize: 10 }} axisLine={false} tickLine={false} />
             <Tooltip content={<CustomTooltip />} /><Legend wrapperStyle={{ fontSize: 11 }} />
-            <Bar dataKey="igAlc" fill={C.instagram} name="Instagram" radius={[4, 4, 0, 0]} />
-            <Bar dataKey="liAlc" fill={C.linkedin}  name="LinkedIn"  radius={[4, 4, 0, 0]} />
+            <Bar dataKey="liAlc" fill={C.linkedin} name="Alcance LinkedIn" radius={[4, 4, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
       </div>

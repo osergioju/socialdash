@@ -71,37 +71,43 @@ async function getGa4Metrics(clientId) {
 }
 
 // ─── Overview ─────────────────────────────────────────────────────────────────
+// IG now stores period keys (last_15d … last_90d) — use last_30d as canonical for overview
+const IG_30D = "last_30d";
+
 async function getOverview(clientId) {
-  const [igFirst, igLast, liFirst, liLast, ga4Last, igSum] = await Promise.all([
-    prisma.instagramMetric.findFirst({ where: { clientId }, orderBy: { month: "asc" } }),
-    prisma.instagramMetric.findFirst({ where: { clientId }, orderBy: { month: "desc" } }),
+  const [ig30, liFirst, liLast, ga4Last] = await Promise.all([
+    prisma.instagramMetric.findUnique({ where: { clientId_month: { clientId, month: IG_30D } } }),
     prisma.linkedinMetric.findFirst({ where: { clientId }, orderBy: { month: "asc" } }),
     prisma.linkedinMetric.findFirst({ where: { clientId }, orderBy: { month: "desc" } }),
     prisma.ga4Metric.findFirst({ where: { clientId }, orderBy: { month: "desc" } }),
-    prisma.instagramMetric.aggregate({ where: { clientId }, _sum: { visualizacoes: true } }),
   ]);
 
-  const igAll  = await prisma.instagramMetric.findMany({ where: { clientId }, orderBy: { month: "asc" } });
+  // IG timeseries: all 4 period records ordered by days ascending
+  const igAll = await prisma.instagramMetric.findMany({
+    where: { clientId, month: { in: ["last_15d", "last_30d", "last_60d", "last_90d"] } },
+    orderBy: { month: "asc" },
+  });
+
   const liAll  = await prisma.linkedinMetric.findMany({ where: { clientId }, orderBy: { month: "asc" } });
   const ga4All = await prisma.ga4Metric.findMany({ where: { clientId }, orderBy: { month: "asc" } });
 
   return {
     kpis: {
-      igSeguidores:  { value: igLast?.seguidores,      growth: pctGrowth(igFirst?.seguidores,      igLast?.seguidores) },
-      liSeguidores:  { value: liLast?.seguidores,      growth: pctGrowth(liFirst?.seguidores,      liLast?.seguidores) },
-      totalViewsIG:  { value: igSum._sum.visualizacoes, variation: varLast(igAll.map(m => m.visualizacoes)) },
+      igSeguidores:  { value: ig30?.seguidores,       growth: null },
+      liSeguidores:  { value: liLast?.seguidores,      growth: pctGrowth(liFirst?.seguidores, liLast?.seguidores) },
+      totalViewsIG:  { value: ig30?.visualizacoes,     variation: null },
       usuariosSite:  { value: ga4Last?.usuariosAtivos,  variation: varLast(ga4All.map(m => m.usuariosAtivos)) },
-      alcanceIG:     { value: igLast?.alcanceOrganico,  variation: varLast(igAll.map(m => m.alcanceOrganico)) },
+      alcanceIG:     { value: ig30?.alcanceOrganico,   variation: null },
       engajamentoLI: { value: liLast?.engajamento,      variation: varLast(liAll.map(m => m.engajamento)) },
     },
     timeseries: {
-      instagram: igAll.map(m => ({ mes: m.monthLabel.split("/")[0], monthKey: m.month, igSeg: m.seguidores, igAlc: m.alcanceOrganico })),
+      instagram: igAll.map(m => ({ mes: m.monthLabel, monthKey: m.month, igSeg: m.seguidores, igAlc: m.alcanceOrganico })),
       linkedin:  liAll.map(m => ({ mes: m.monthLabel.split("/")[0], monthKey: m.month, liSeg: m.seguidores, liAlc: m.alcance })),
       ga4:       ga4All.map(m => ({ mes: m.monthLabel.split("/")[0], monthKey: m.month, usuarios: m.usuariosAtivos, sessoes: m.sessoes })),
     },
     growth: {
-      igTotal: igLast && igFirst ? igLast.seguidores - igFirst.seguidores : null,
-      igPct:   pctGrowth(igFirst?.seguidores, igLast?.seguidores),
+      igTotal: ig30?.novosSeguidores ?? null,
+      igPct:   null,
       liTotal: liLast && liFirst ? liLast.seguidores - liFirst.seguidores : null,
       liPct:   pctGrowth(liFirst?.seguidores, liLast?.seguidores),
     },
