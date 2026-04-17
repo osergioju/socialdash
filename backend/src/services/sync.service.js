@@ -197,14 +197,14 @@ async function fetchMediaInsightsBatch(pageToken, posts) {
     const requests = batch.map((p) => {
       let metrics;
       if (p.media_type === "REEL") {
-        // v22.0: plays, reach, saved, shares, total_interactions (sem impressions)
-        metrics = "reach,plays,saved,shares,total_interactions";
+        // REEL v22.0: reach + total_interactions (engloba likes/comments/saves/shares)
+        metrics = "reach,plays,total_interactions";
       } else if (p.media_type === "STORY") {
-        // v22.0: impressions removido de stories também
+        // STORY v22.0: sem impressions, sem saved
         metrics = "exits,reach,taps_forward,taps_back";
       } else {
-        // IMAGE, CAROUSEL_ALBUM, VIDEO feed — v22.0: impressions removido
-        metrics = "reach,saved,shares";
+        // IMAGE, CAROUSEL_ALBUM, VIDEO feed v22.0: só reach é garantido universal
+        metrics = "reach";
       }
       return { relative_url: `${p.id}/insights?metric=${metrics}` };
     });
@@ -412,22 +412,24 @@ async function syncMeta(clientId, conn) {
       if (new Date(p.timestamp) < periodStart) continue;
 
       const ins = insightsMap[p.id] || {};
-      const pLikes = ins.likes ?? p.like_count ?? 0;
-      const pComments = ins.comments ?? p.comments_count ?? 0;
-      const pSaved = ins.saved ?? 0;
-      const pShares = ins.shares ?? 0;
+
+      // likes e comments disponíveis inline — não dependem do insights batch
+      const pLikes    = p.like_count ?? 0;
+      const pComments = p.comments_count ?? 0;
 
       likes    += pLikes;
       comments += pComments;
-      saved    += pSaved;
-      shares   += pShares;
+      // saved e shares de feed posts: a API v22.0 não retorna de forma confiável — mantém 0
 
       if (p.media_type === "REEL") {
         reelsCount++;
         reelsReach        += ins.reach ?? 0;
-        reelsInteractions += ins.total_interactions ?? (pLikes + pComments + pSaved + pShares);
+        // total_interactions de Reels engloba likes+comments+saves+shares
+        reelsInteractions += ins.total_interactions ?? (pLikes + pComments);
       } else {
         feedCount++;
+        // reach de feed posts (IMAGE/VIDEO/CAROUSEL) vem do batch
+        // (not aggregated at post level — account-level reach is used instead)
       }
     }
 
@@ -437,7 +439,7 @@ async function syncMeta(clientId, conn) {
       if (new Date(s.timestamp) < periodStart) continue;
       storiesCount++;
       const ins = insightsMap[s.id] || {};
-      storiesViews += ins.impressions ?? ins.reach ?? 0;
+      storiesViews += ins.reach ?? 0;
     }
 
     const igData = {
