@@ -170,12 +170,8 @@ function monthKey(year, month) {
 
 // ─── META / INSTAGRAM ─────────────────────────────────────────────────────────
 
-const IG_PERIODS = [
-  { key: "last_15d", label: "15 dias", days: 15 },
-  { key: "last_30d", label: "30 dias", days: 30 },
-  { key: "last_60d", label: "60 dias", days: 60 },
-  { key: "last_90d", label: "90 dias", days: 90 },
-];
+// Quantos meses de histórico buscar
+const IG_MONTHS_BACK = 6;
 
 /**
  * Busca insights por mídia usando a Facebook Batch API.
@@ -250,211 +246,164 @@ async function syncMeta(clientId, conn) {
   const token = await getValidToken(conn);
   const meta = conn.metadata ? JSON.parse(conn.metadata) : {};
 
-  // FIX MULTI-TENANT: a página deve ser selecionada explicitamente pelo usuário.
-  // Se ainda não foi selecionada, interrompe o sync com mensagem clara.
   if (!meta.instagramBusinessAccountId || !meta.pageId) {
-    throw new Error(
-      "Conta Instagram não selecionada. Acesse Configurações > Conexões > Meta e clique em 'Selecionar Página'."
-    );
+    throw new Error("Conta Instagram não selecionada. Acesse Configurações > Conexões > Meta e clique em 'Selecionar Página'.");
   }
 
   const igId = meta.instagramBusinessAccountId;
   const pageId = meta.pageId;
 
-  console.log(`[sync/meta] igId=${igId} pageId=${pageId}`);
-
-  // Page Access Token — necessário para acessar insights da conta IG Business
+  // Page Access Token
   const pageTokenRes = await httpGet(
     `https://graph.facebook.com/${IG_API_VERSION}/${pageId}?fields=access_token`,
     token
   );
-  console.log(`[sync/meta] pageToken obtido: ${pageTokenRes.access_token ? "SIM" : "NÃO — usando user token"}`);
-  if (pageTokenRes.error) console.error("[sync/meta] erro ao buscar pageToken:", pageTokenRes.error);
   const pageToken = pageTokenRes.access_token || token;
 
-  // Contagem atual de seguidores (snapshot — única forma disponível na API)
+  // Seguidores atuais (snapshot)
   const profileRes = await httpGet(
-    `https://graph.facebook.com/${IG_API_VERSION}/${igId}?fields=followers_count,media_count`,
+    `https://graph.facebook.com/${IG_API_VERSION}/${igId}?fields=followers_count`,
     pageToken
   ).catch(() => ({}));
-  console.log(`[sync/meta] profile: followers=${profileRes.followers_count} media_count=${profileRes.media_count} error=${JSON.stringify(profileRes.error)}`);
   const currentFollowers = profileRes.followers_count || 0;
 
   const now = new Date();
   const since90Unix = Math.floor(new Date(now.getTime() - 90 * 24 * 3600 * 1000).getTime() / 1000);
-  const untilUnix = Math.floor(now.getTime() / 1000);
-  const since90Str = new Date(now.getTime() - 90 * 24 * 3600 * 1000).toISOString().substring(0, 10);
+  const since30Unix = Math.floor(new Date(now.getTime() - 30 * 24 * 3600 * 1000).getTime() / 1000);
+  const untilUnix   = Math.floor(now.getTime() / 1000);
 
-  // ── Account-level insights diários (últimos 90 dias) ──────────────────────
-  // v22.0: "impressions" renomeado para "views" no nível de conta
+  // ── Account insights diários — últimos 90 dias (reach, views, profile_views) ──
   const accountInsightsRes = await httpGet(
     `https://graph.facebook.com/${IG_API_VERSION}/${igId}/insights` +
-    `?metric=reach,views,profile_views` +
-    `&period=day&since=${since90Unix}&until=${untilUnix}`,
+    `?metric=reach,views,profile_views&period=day&since=${since90Unix}&until=${untilUnix}`,
     pageToken
-  ).catch((e) => {
-    console.warn("[sync/meta] account insights network error:", e.message);
-    return { data: [] };
-  });
+  ).catch(() => ({ data: [] }));
 
-  console.log(`[sync/meta] account insights — data.length=${accountInsightsRes.data?.length} error=${JSON.stringify(accountInsightsRes.error)}`);
-  if (accountInsightsRes.data?.length > 0) {
-    const sample = accountInsightsRes.data[0];
-    console.log(`[sync/meta] account insights sample — metric="${sample.name}" values.length=${sample.values?.length} primeiro valor:`, sample.values?.[0]);
-  } else {
-    console.log(`[sync/meta] account insights resposta completa:`, JSON.stringify(accountInsightsRes).substring(0, 500));
-  }
-
-  // "views" é o novo nome de "impressions" na v22.0
+  // Agrupa por dia: daily[metrica]["YYYY-MM-DD"] = valor
   const daily = { reach: {}, views: {}, profile_views: {} };
   for (const metric of (accountInsightsRes.data || [])) {
     for (const v of (metric.values || [])) {
       const day = v.end_time?.substring(0, 10);
       if (day && metric.name in daily) {
-        const val = typeof v.value === "number" ? v.value : 0;
-        daily[metric.name][day] = (daily[metric.name][day] || 0) + val;
+        daily[metric.name][day] = (daily[metric.name][day] || 0) + (typeof v.value === "number" ? v.value : 0);
       }
     }
   }
-  console.log(`[sync/meta] daily reach dias=${Object.keys(daily.reach).length} total=${Object.values(daily.reach).reduce((a, b) => a + b, 0)}`);
-  console.log(`[sync/meta] daily views dias=${Object.keys(daily.views).length} total=${Object.values(daily.views).reduce((a, b) => a + b, 0)}`);
-  console.log(`[sync/meta] daily profile_views dias=${Object.keys(daily.profile_views).length} total=${Object.values(daily.profile_views).reduce((a, b) => a + b, 0)}`);
+  console.log(`[sync/meta] account insights — reach=${Object.values(daily.reach).reduce((a,b)=>a+b,0)} views=${Object.values(daily.views).reduce((a,b)=>a+b,0)} profile_views=${Object.values(daily.profile_views).reduce((a,b)=>a+b,0)}`);
 
-  // ── Crescimento de seguidores ─────────────────────────────────────────────
-  // FIX: follower_count aceita no máximo 30 dias entre since e until
-  const since30Unix = Math.floor(new Date(now.getTime() - 30 * 24 * 3600 * 1000).getTime() / 1000);
+  // ── Follower count diário — máximo 30 dias ────────────────────────────────
   const followerSnapshotRes = await httpGet(
     `https://graph.facebook.com/${IG_API_VERSION}/${igId}/insights` +
     `?metric=follower_count&period=day&since=${since30Unix}&until=${untilUnix}`,
     pageToken
   ).catch(() => ({ data: [] }));
 
-  console.log(`[sync/meta] follower_count — data.length=${followerSnapshotRes.data?.length} error=${JSON.stringify(followerSnapshotRes.error)}`);
-  if (followerSnapshotRes.data?.length > 0) {
-    console.log(`[sync/meta] follower_count sample:`, followerSnapshotRes.data[0]?.values?.slice(0, 3));
-  }
-
   const followerSnapshots = {};
   for (const v of (followerSnapshotRes.data?.[0]?.values || [])) {
     const day = v.end_time?.substring(0, 10);
     if (day) followerSnapshots[day] = typeof v.value === "number" ? v.value : 0;
   }
-
-  // Calcula ganhos diários a partir dos snapshots
+  // Delta dia a dia → ganhos por dia
   const dailyFollowerGains = {};
   const snapshotDays = Object.keys(followerSnapshots).sort();
   for (let i = 1; i < snapshotDays.length; i++) {
     const delta = followerSnapshots[snapshotDays[i]] - followerSnapshots[snapshotDays[i - 1]];
     if (delta > 0) dailyFollowerGains[snapshotDays[i]] = delta;
   }
-  console.log(`[sync/meta] follower gains dias com ganho=${Object.keys(dailyFollowerGains).length} total=+${Object.values(dailyFollowerGains).reduce((a, b) => a + b, 0)}`);
 
-  // ── Feed + Reels (endpoint /media) ───────────────────────────────────────
-  const mediaRes = await httpGet(
-    `https://graph.facebook.com/${IG_API_VERSION}/${igId}/media` +
-    `?fields=id,media_type,timestamp,like_count,comments_count&limit=100`,
-    pageToken
-  ).catch(() => ({ data: [] }));
+  // ── Media: pagina até cobrir IG_MONTHS_BACK meses ────────────────────────
+  const cutoffDate = new Date(now.getFullYear(), now.getMonth() - IG_MONTHS_BACK + 1, 1);
+  const allPosts = [];
+  let mediaUrl = `https://graph.facebook.com/${IG_API_VERSION}/${igId}/media` +
+    `?fields=id,media_type,timestamp,like_count,comments_count&limit=100`;
 
-  console.log(`[sync/meta] media — total=${mediaRes.data?.length} error=${JSON.stringify(mediaRes.error)}`);
+  while (mediaUrl) {
+    const res = await httpGet(mediaUrl, pageToken).catch(() => ({ data: [] }));
+    const posts = res.data || [];
+    if (posts.length === 0) break;
+    allPosts.push(...posts);
+    // Para quando o post mais antigo da página já passou do cutoff
+    const oldest = new Date(posts[posts.length - 1].timestamp);
+    if (oldest < cutoffDate) break;
+    mediaUrl = res.paging?.next || null;
+  }
 
-  // Filtra posts dos últimos 90 dias
-  const feedAndReels = (mediaRes.data || []).filter(
-    (p) => new Date(p.timestamp) >= new Date(now.getTime() - 90 * 24 * 3600 * 1000)
-  );
-  const reelCount = feedAndReels.filter(p => p.media_type === "REEL").length;
-  const feedCount2 = feedAndReels.filter(p => p.media_type !== "REEL").length;
-  console.log(`[sync/meta] posts 90d — feed=${feedCount2} reels=${reelCount} total=${feedAndReels.length}`);
+  const filteredPosts = allPosts.filter(p => new Date(p.timestamp) >= cutoffDate);
+  console.log(`[sync/meta] media paginado — total=${allPosts.length} dentro do período=${filteredPosts.length}`);
 
-  // ── Stories (endpoint separado — NÃO aparecem no /media) ─────────────────
+  // ── Stories ───────────────────────────────────────────────────────────────
   const storiesRes = await httpGet(
-    `https://graph.facebook.com/${IG_API_VERSION}/${igId}/stories` +
-    `?fields=id,media_type,timestamp&limit=100`,
+    `https://graph.facebook.com/${IG_API_VERSION}/${igId}/stories?fields=id,media_type,timestamp&limit=100`,
     pageToken
   ).catch(() => ({ data: [] }));
-  console.log(`[sync/meta] stories — total=${storiesRes.data?.length} error=${JSON.stringify(storiesRes.error)}`);
-
   const stories = storiesRes.data || [];
 
-  // ── Busca insights individuais via Batch API ──────────────────────────────
-  const allMedia = [...feedAndReels, ...stories];
-  const insightsMap = await fetchMediaInsightsBatch(pageToken, allMedia).catch((e) => {
-    console.warn("[sync/meta] batch insights error:", e.message);
-    return {};
-  });
+  // ── Insights individuais via Batch API ────────────────────────────────────
+  const allMedia = [...filteredPosts, ...stories];
+  const insightsMap = await fetchMediaInsightsBatch(pageToken, allMedia).catch(() => ({}));
 
-  // ── Elimina registros mensais antigos (modelo antigo) ────────────────────
+  // ── Remove registros no formato antigo (last_15d etc) ────────────────────
   await prisma.instagramMetric.deleteMany({
-    where: { clientId, NOT: { month: { in: IG_PERIODS.map((p) => p.key) } } },
+    where: { clientId, month: { in: ["last_15d", "last_30d", "last_60d", "last_90d"] } },
   });
 
-  // ── Agrega métricas por período ───────────────────────────────────────────
-  for (const { key, label, days } of IG_PERIODS) {
-    const periodStart = new Date(now.getTime() - days * 24 * 3600 * 1000);
-    const periodStartStr = periodStart.toISOString().substring(0, 10);
+  // ── Agrega por mês calendário e salva ────────────────────────────────────
+  const months = [];
+  for (let i = 0; i < IG_MONTHS_BACK; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push({ year: d.getFullYear(), month: d.getMonth() + 1 });
+  }
 
-    // Soma insights diários de conta
-    let reach = 0, views = 0, profileViews = 0, novosSeguidores = 0;
-    for (const [day, val] of Object.entries(daily.reach)) {
-      if (day >= periodStartStr) reach += val;
-    }
-    for (const [day, val] of Object.entries(daily.views)) {
-      if (day >= periodStartStr) views += val;
-    }
-    for (const [day, val] of Object.entries(daily.profile_views)) {
-      if (day >= periodStartStr) profileViews += val;
-    }
-    for (const [day, val] of Object.entries(dailyFollowerGains)) {
-      if (day >= periodStartStr) novosSeguidores += val;
-    }
+  for (const { year, month } of months) {
+    const mk = monthKey(year, month);
+    const ml = monthLabel(year, month);
+    const monthStart = new Date(year, month - 1, 1);
+    const monthEnd   = new Date(year, month, 1);
+    const mkStr      = `${year}-${String(month).padStart(2, "0")}`;
 
-    // Agrega feed e reels
-    let feedCount = 0, reelsCount = 0;
-    let likes = 0, comments = 0, saved = 0, shares = 0;
+    // Soma dados diários de conta deste mês
+    const reach       = Object.entries(daily.reach).filter(([d]) => d.startsWith(mkStr)).reduce((s, [, v]) => s + v, 0);
+    const views       = Object.entries(daily.views).filter(([d]) => d.startsWith(mkStr)).reduce((s, [, v]) => s + v, 0);
+    const profileViews = Object.entries(daily.profile_views).filter(([d]) => d.startsWith(mkStr)).reduce((s, [, v]) => s + v, 0);
+    const novosSeguidores = Object.entries(dailyFollowerGains).filter(([d]) => d.startsWith(mkStr)).reduce((s, [, v]) => s + v, 0);
+
+    // Agrega posts deste mês
+    let feedCount = 0, reelsCount = 0, likes = 0, comments = 0;
     let reelsReach = 0, reelsInteractions = 0;
 
-    for (const p of feedAndReels) {
-      if (new Date(p.timestamp) < periodStart) continue;
-
+    for (const p of filteredPosts) {
+      const ts = new Date(p.timestamp);
+      if (ts < monthStart || ts >= monthEnd) continue;
       const ins = insightsMap[p.id] || {};
-
-      // likes e comments disponíveis inline — não dependem do insights batch
-      const pLikes = p.like_count ?? 0;
+      const pLikes    = p.like_count ?? 0;
       const pComments = p.comments_count ?? 0;
-
-      likes += pLikes;
+      likes    += pLikes;
       comments += pComments;
-      // saved e shares de feed posts: a API v22.0 não retorna de forma confiável — mantém 0
-
       if (p.media_type === "REEL") {
         reelsCount++;
-        reelsReach += ins.reach ?? 0;
-        // total_interactions de Reels engloba likes+comments+saves+shares
+        reelsReach        += ins.reach ?? 0;
         reelsInteractions += ins.total_interactions ?? (pLikes + pComments);
       } else {
         feedCount++;
-        // reach de feed posts (IMAGE/VIDEO/CAROUSEL) vem do batch
-        // (not aggregated at post level — account-level reach is used instead)
       }
     }
 
-    // Agrega stories do período
+    // Stories deste mês
     let storiesCount = 0, storiesViews = 0;
     for (const s of stories) {
-      if (new Date(s.timestamp) < periodStart) continue;
+      const ts = new Date(s.timestamp);
+      if (ts < monthStart || ts >= monthEnd) continue;
       storiesCount++;
-      const ins = insightsMap[s.id] || {};
-      storiesViews += ins.reach ?? 0;
+      storiesViews += insightsMap[s.id]?.reach ?? 0;
     }
 
     const igData = {
-      monthLabel: label,
+      monthLabel: ml,
       seguidores: currentFollowers,
       novosSeguidores,
       alcanceOrganico: reach,
       visualizacoes: views,
       interacoes: likes + comments,
-
       visitasPerfil: profileViews,
       postagensTotal: feedCount + reelsCount,
       reelsQtd: reelsCount,
@@ -464,24 +413,19 @@ async function syncMeta(clientId, conn) {
       storiesViews,
       curtidasPosts: likes,
       comentariosPosts: comments,
-      salvamentosPosts: saved,
-      compartilhamentosPosts: shares,
+      salvamentosPosts: 0,
+      compartilhamentosPosts: 0,
     };
 
-    const existing = await prisma.instagramMetric.findUnique({
-      where: { clientId_month: { clientId, month: key } },
-    });
+    const existing = await prisma.instagramMetric.findUnique({ where: { clientId_month: { clientId, month: mk } } });
     if (existing) {
       await prisma.instagramMetric.update({ where: { id: existing.id }, data: igData });
     } else {
-      await prisma.instagramMetric.create({ data: { clientId, month: key, ...igData } });
+      await prisma.instagramMetric.create({ data: { clientId, month: mk, ...igData } });
     }
   }
 
-  // ── Audiência por cidade (snapshot) ──────────────────────────────────────
-  // NOTA: audience_city com period=lifetime foi removido pela Meta em 2023.
-  // Usando reached_audience_demographics como alternativa (disponível em v22.0+).
-  // Se a conta não tiver acesso, o catch garante que o restante do sync continua.
+  // ── Cidades (snapshot do mês atual) ──────────────────────────────────────
   const audienceRes = await httpGet(
     `https://graph.facebook.com/${IG_API_VERSION}/${igId}/insights` +
     `?metric=reached_audience_demographics&period=lifetime&breakdown=city`,
@@ -490,27 +434,19 @@ async function syncMeta(clientId, conn) {
 
   const cityRawData = audienceRes.data?.[0]?.total_value?.breakdowns?.[0]?.results;
   if (Array.isArray(cityRawData)) {
+    const currentMk = monthKey(now.getFullYear(), now.getMonth() + 1);
     for (const entry of cityRawData.slice(0, 10)) {
       const cityName = (entry.dimension_values?.[0] || "Desconhecido").replace(/_/g, " ");
-      const count = entry.value || 0;
-      let city = await prisma.city.findUnique({
-        where: { clientId_name_platform: { clientId, name: cityName, platform: "INSTAGRAM" } },
-      });
-      if (!city) {
-        city = await prisma.city.create({ data: { clientId, name: cityName, platform: "INSTAGRAM" } });
-      }
-      const existingCm = await prisma.cityMetric.findUnique({
-        where: { cityId_month: { cityId: city.id, month: "last_30d" } },
-      });
-      if (existingCm) {
-        await prisma.cityMetric.update({ where: { id: existingCm.id }, data: { seguidores: count } });
-      } else {
-        await prisma.cityMetric.create({ data: { cityId: city.id, month: "last_30d", seguidores: count } });
-      }
+      const count    = entry.value || 0;
+      let city = await prisma.city.findUnique({ where: { clientId_name_platform: { clientId, name: cityName, platform: "INSTAGRAM" } } });
+      if (!city) city = await prisma.city.create({ data: { clientId, name: cityName, platform: "INSTAGRAM" } });
+      const existingCm = await prisma.cityMetric.findUnique({ where: { cityId_month: { cityId: city.id, month: currentMk } } });
+      if (existingCm) await prisma.cityMetric.update({ where: { id: existingCm.id }, data: { seguidores: count } });
+      else await prisma.cityMetric.create({ data: { cityId: city.id, month: currentMk, seguidores: count } });
     }
   }
 
-  return { ok: true, periods: 4, posts: feedAndReels.length, stories: stories.length };
+  return { ok: true, months: months.length, posts: filteredPosts.length };
 }
 
 // ─── LINKEDIN ─────────────────────────────────────────────────────────────────
