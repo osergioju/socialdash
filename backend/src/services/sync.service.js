@@ -33,6 +33,7 @@ function httpGet(url, token) {
   });
 }
 
+
 function httpPost(url, token, body) {
   return new Promise((resolve, reject) => {
     const data = JSON.stringify(body);
@@ -315,9 +316,9 @@ async function syncMeta(clientId, conn) {
       }
     }
   }
-  console.log(`[sync/meta] daily reach dias=${Object.keys(daily.reach).length} total=${Object.values(daily.reach).reduce((a,b)=>a+b,0)}`);
-  console.log(`[sync/meta] daily views dias=${Object.keys(daily.views).length} total=${Object.values(daily.views).reduce((a,b)=>a+b,0)}`);
-  console.log(`[sync/meta] daily profile_views dias=${Object.keys(daily.profile_views).length} total=${Object.values(daily.profile_views).reduce((a,b)=>a+b,0)}`);
+  console.log(`[sync/meta] daily reach dias=${Object.keys(daily.reach).length} total=${Object.values(daily.reach).reduce((a, b) => a + b, 0)}`);
+  console.log(`[sync/meta] daily views dias=${Object.keys(daily.views).length} total=${Object.values(daily.views).reduce((a, b) => a + b, 0)}`);
+  console.log(`[sync/meta] daily profile_views dias=${Object.keys(daily.profile_views).length} total=${Object.values(daily.profile_views).reduce((a, b) => a + b, 0)}`);
 
   // ── Crescimento de seguidores ─────────────────────────────────────────────
   // FIX: follower_count aceita no máximo 30 dias entre since e until
@@ -346,7 +347,7 @@ async function syncMeta(clientId, conn) {
     const delta = followerSnapshots[snapshotDays[i]] - followerSnapshots[snapshotDays[i - 1]];
     if (delta > 0) dailyFollowerGains[snapshotDays[i]] = delta;
   }
-  console.log(`[sync/meta] follower gains dias com ganho=${Object.keys(dailyFollowerGains).length} total=+${Object.values(dailyFollowerGains).reduce((a,b)=>a+b,0)}`);
+  console.log(`[sync/meta] follower gains dias com ganho=${Object.keys(dailyFollowerGains).length} total=+${Object.values(dailyFollowerGains).reduce((a, b) => a + b, 0)}`);
 
   // ── Feed + Reels (endpoint /media) ───────────────────────────────────────
   const mediaRes = await httpGet(
@@ -418,16 +419,16 @@ async function syncMeta(clientId, conn) {
       const ins = insightsMap[p.id] || {};
 
       // likes e comments disponíveis inline — não dependem do insights batch
-      const pLikes    = p.like_count ?? 0;
+      const pLikes = p.like_count ?? 0;
       const pComments = p.comments_count ?? 0;
 
-      likes    += pLikes;
+      likes += pLikes;
       comments += pComments;
       // saved e shares de feed posts: a API v22.0 não retorna de forma confiável — mantém 0
 
       if (p.media_type === "REEL") {
         reelsCount++;
-        reelsReach        += ins.reach ?? 0;
+        reelsReach += ins.reach ?? 0;
         // total_interactions de Reels engloba likes+comments+saves+shares
         reelsInteractions += ins.total_interactions ?? (pLikes + pComments);
       } else {
@@ -797,7 +798,7 @@ async function getSyncStatus(clientId) {
         out.pageSelected = !!(m.instagramBusinessAccountId && m.pageId);
         out.pageName = m.pageName || null;
         out.instagramName = m.instagramName || null;
-      } catch {}
+      } catch { }
     }
     delete out.metadata;
     return out;
