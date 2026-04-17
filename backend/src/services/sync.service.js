@@ -356,10 +356,12 @@ async function syncMeta(clientId, conn) {
 
     // reach, views, profile_views — todos metric_type=total_value em v22.0
     const mStartUnix = Math.floor(monthStart.getTime() / 1000);
-    const mEndUnix = Math.floor(monthEnd.getTime() / 1000);
+    const mEndUnixFull = Math.floor(monthEnd.getTime() / 1000);
+    // API limit: max 30 days (2592000s) between since and until
+    const mEndUnix = Math.min(mEndUnixFull, mStartUnix + 30 * 24 * 3600);
     const insRes = await httpGet(
       `https://graph.facebook.com/${IG_API_VERSION}/${igId}/insights` +
-      `?metric=reach,views,profile_views&metric_type=total_value&since=${mStartUnix}&until=${mEndUnix}`,
+      `?metric=reach,views,profile_views&metric_type=total_value&period=day&since=${mStartUnix}&until=${mEndUnix}`,
       pageToken
     ).catch(() => ({ data: [] }));
 
@@ -429,10 +431,10 @@ async function syncMeta(clientId, conn) {
       monthLabel: ml,
       seguidores: lastFollowerOfMonth,
       novosSeguidores,
-      alcanceOrganico: reach,
-      visualizacoes: views,
+      alcanceOrganico: reach ?? 0,
+      visualizacoes: views ?? 0,
       interacoes: likes + comments,
-      visitasPerfil: profileViews,
+      visitasPerfil: profileViews ?? 0,
       postagensTotal: feedCount + reelsCount,
       reelsQtd: reelsCount,
       reelsAlcance: reelsReach,
