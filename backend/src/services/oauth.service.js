@@ -193,6 +193,7 @@ async function handleCallback(platform, code, stateToken) {
   const refreshToken = tokenRes.refresh_token || null;
   const expiresIn = tokenRes.expires_in; // seconds
 
+  console.log(accessToken);
   // 3. Fetch account info
   const info = await fetchAccountInfo(platform, accessToken);
 
@@ -214,12 +215,12 @@ async function handleCallback(platform, code, stateToken) {
 
   const connection = existing
     ? await prisma.platformConnection.update({
-        where: { clientId_platform: { clientId, platform } },
-        data: tokenData,
-      })
+      where: { clientId_platform: { clientId, platform } },
+      data: tokenData,
+    })
     : await prisma.platformConnection.create({
-        data: { clientId, platform, ...tokenData },
-      });
+      data: { clientId, platform, ...tokenData },
+    });
 
   return { clientId, platform, accountName: info.accountName };
 }
