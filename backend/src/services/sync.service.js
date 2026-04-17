@@ -34,6 +34,7 @@ function httpGet(url, token) {
 }
 
 
+
 function httpPost(url, token, body) {
   return new Promise((resolve, reject) => {
     const data = JSON.stringify(body);
@@ -270,7 +271,7 @@ async function syncMeta(clientId, conn) {
   const now = new Date();
   const since90Unix = Math.floor(new Date(now.getTime() - 90 * 24 * 3600 * 1000).getTime() / 1000);
   const since30Unix = Math.floor(new Date(now.getTime() - 30 * 24 * 3600 * 1000).getTime() / 1000);
-  const untilUnix   = Math.floor(now.getTime() / 1000);
+  const untilUnix = Math.floor(now.getTime() / 1000);
 
   // ── Account insights diários — últimos 90 dias (reach, views, profile_views) ──
   const accountInsightsRes = await httpGet(
@@ -289,7 +290,7 @@ async function syncMeta(clientId, conn) {
       }
     }
   }
-  console.log(`[sync/meta] account insights — reach=${Object.values(daily.reach).reduce((a,b)=>a+b,0)} views=${Object.values(daily.views).reduce((a,b)=>a+b,0)} profile_views=${Object.values(daily.profile_views).reduce((a,b)=>a+b,0)}`);
+  console.log(`[sync/meta] account insights — reach=${Object.values(daily.reach).reduce((a, b) => a + b, 0)} views=${Object.values(daily.views).reduce((a, b) => a + b, 0)} profile_views=${Object.values(daily.profile_views).reduce((a, b) => a + b, 0)}`);
 
   // ── Follower count diário — máximo 30 dias ────────────────────────────────
   const followerSnapshotRes = await httpGet(
@@ -358,12 +359,12 @@ async function syncMeta(clientId, conn) {
     const mk = monthKey(year, month);
     const ml = monthLabel(year, month);
     const monthStart = new Date(year, month - 1, 1);
-    const monthEnd   = new Date(year, month, 1);
-    const mkStr      = `${year}-${String(month).padStart(2, "0")}`;
+    const monthEnd = new Date(year, month, 1);
+    const mkStr = `${year}-${String(month).padStart(2, "0")}`;
 
     // Soma dados diários de conta deste mês
-    const reach       = Object.entries(daily.reach).filter(([d]) => d.startsWith(mkStr)).reduce((s, [, v]) => s + v, 0);
-    const views       = Object.entries(daily.views).filter(([d]) => d.startsWith(mkStr)).reduce((s, [, v]) => s + v, 0);
+    const reach = Object.entries(daily.reach).filter(([d]) => d.startsWith(mkStr)).reduce((s, [, v]) => s + v, 0);
+    const views = Object.entries(daily.views).filter(([d]) => d.startsWith(mkStr)).reduce((s, [, v]) => s + v, 0);
     const profileViews = Object.entries(daily.profile_views).filter(([d]) => d.startsWith(mkStr)).reduce((s, [, v]) => s + v, 0);
     const novosSeguidores = Object.entries(dailyFollowerGains).filter(([d]) => d.startsWith(mkStr)).reduce((s, [, v]) => s + v, 0);
 
@@ -375,13 +376,13 @@ async function syncMeta(clientId, conn) {
       const ts = new Date(p.timestamp);
       if (ts < monthStart || ts >= monthEnd) continue;
       const ins = insightsMap[p.id] || {};
-      const pLikes    = p.like_count ?? 0;
+      const pLikes = p.like_count ?? 0;
       const pComments = p.comments_count ?? 0;
-      likes    += pLikes;
+      likes += pLikes;
       comments += pComments;
       if (p.media_type === "REEL") {
         reelsCount++;
-        reelsReach        += ins.reach ?? 0;
+        reelsReach += ins.reach ?? 0;
         reelsInteractions += ins.total_interactions ?? (pLikes + pComments);
       } else {
         feedCount++;
@@ -437,7 +438,7 @@ async function syncMeta(clientId, conn) {
     const currentMk = monthKey(now.getFullYear(), now.getMonth() + 1);
     for (const entry of cityRawData.slice(0, 10)) {
       const cityName = (entry.dimension_values?.[0] || "Desconhecido").replace(/_/g, " ");
-      const count    = entry.value || 0;
+      const count = entry.value || 0;
       let city = await prisma.city.findUnique({ where: { clientId_name_platform: { clientId, name: cityName, platform: "INSTAGRAM" } } });
       if (!city) city = await prisma.city.create({ data: { clientId, name: cityName, platform: "INSTAGRAM" } });
       const existingCm = await prisma.cityMetric.findUnique({ where: { cityId_month: { cityId: city.id, month: currentMk } } });
