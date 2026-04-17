@@ -527,14 +527,8 @@ async function syncLinkedin(clientId, conn) {
   ).catch(() => ({}));
   const followerStats = followerRes.elements?.[0] || {};
   const seguidores = followerStats.totalFollowerCount || 0;
-  let novosSeguidores = Object.entries(dailyFollowerGains)
-    .filter(([d]) => d.startsWith(mkStr))
-    .reduce((s, [, v]) => s + v, 0);
-
-  // fallback se não tiver dado
-  if (!novosSeguidores) {
-    novosSeguidores = 0;
-  }
+  const novosSeguidores = followerStats.followerGains?.organicFollowerGain || 0;
+  console.log(`[sync/linkedin] seguidores=${seguidores} novos=${novosSeguidores}`);
 
   const startMs = new Date(year, month - 1, 1).getTime();
   const endMs = new Date(year, month, 1).getTime() - 1;
