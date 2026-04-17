@@ -368,6 +368,8 @@ async function syncMeta(clientId, conn) {
     months.push({ year: d.getFullYear(), month: d.getMonth() + 1 });
   }
 
+  let previousFollowers = currentFollowers;
+
   for (const { year, month } of months) {
     const mk = monthKey(year, month);
     const ml = monthLabel(year, month);
@@ -376,7 +378,20 @@ async function syncMeta(clientId, conn) {
     const mkStr = `${year}-${String(month).padStart(2, "0")}`;
 
     // Reach: soma dos dados diários deste mês
-    const reach = Object.entries(daily.reach).filter(([d]) => d.startsWith(mkStr)).reduce((s, [, v]) => s + v, 0);
+    const reachValues = Object.entries(daily.reach)
+      .filter(([d]) => d.startsWith(mkStr))
+      .map(([, v]) => v);
+
+    let reach = reachValues.length
+      ? reachValues.reduce((a, b) => a + b, 0)
+      : 0;
+
+    // 🔥 fallback se vier vazio (Meta bug)
+    if (!reach) {
+      reach = Math.round(
+        Object.values(daily.reach).reduce((a, b) => a + b, 0) / IG_MONTHS_BACK
+      );
+    }
 
     // Views + profile_views: metric_type=total_value (uma requisição por mês)
     const mStartUnix = Math.floor(monthStart.getTime() / 1000);
@@ -391,7 +406,7 @@ async function syncMeta(clientId, conn) {
       pageToken
     );
 
-    let views = 0, profileViews = 0;
+    let views = null, profileViews = null;
     if (tvRes.error) {
       console.warn(`[sync/meta] ${mk} views/profile_views error: ${tvRes.error.message}`);
     } else {
@@ -400,10 +415,16 @@ async function syncMeta(clientId, conn) {
         if (entry.name === "views") views = val;
         if (entry.name === "profile_views") profileViews = val;
       }
+      if (!views || views < 0) views = 0;
+      if (!profileViews || profileViews < 0) profileViews = 0;
     }
     console.log(`[sync/meta] ${mk} reach=${reach} views=${views} profile_views=${profileViews}`);
 
-    const novosSeguidores = Object.entries(dailyFollowerGains).filter(([d]) => d.startsWith(mkStr)).reduce((s, [, v]) => s + v, 0);
+    let novosSeguidores = Object.entries(dailyFollowerGains)
+      .filter(([d]) => d.startsWith(mkStr))
+      .reduce((s, [, v]) => s + v, 0);
+
+    if (!novosSeguidores) novosSeguidores = 0;
 
     // Agrega posts deste mês
     let feedCount = 0, reelsCount = 0, likes = 0, comments = 0;
@@ -435,10 +456,18 @@ async function syncMeta(clientId, conn) {
       storiesViews += insightsMap[s.id]?.reach ?? 0;
     }
 
-    const lastFollowerOfMonth = Object.entries(followerSnapshots)
+    const snapshotEntries = Object.entries(followerSnapshots)
       .filter(([d]) => d.startsWith(mkStr))
-      .sort()
-      .pop()?.[1] || currentFollowers;
+      .sort();
+
+    let lastFollowerOfMonth;
+
+    if (snapshotEntries.length) {
+      lastFollowerOfMonth = snapshotEntries[snapshotEntries.length - 1][1];
+    } else {
+      // fallback: mantém valor do mês anterior
+      lastFollowerOfMonth = previousFollowers ?? currentFollowers;
+    }
 
     const igData = {
       monthLabel: ml,
@@ -459,6 +488,8 @@ async function syncMeta(clientId, conn) {
       salvamentosPosts: 0,
       compartilhamentosPosts: 0,
     };
+
+    previousFollowers = lastFollowerOfMonth;
 
     const existing = await prisma.instagramMetric.findUnique({ where: { clientId_month: { clientId, month: mk } } });
     if (existing) {
@@ -542,7 +573,14 @@ async function syncLinkedin(clientId, conn) {
   ).catch(() => ({}));
   const followerStats = followerRes.elements?.[0] || {};
   const seguidores = followerStats.totalFollowerCount || 0;
-  const novosSeguidores = followerStats.followerGains?.organicFollowerGain || 0;
+  let novosSeguidores = Object.entries(dailyFollowerGains)
+    .filter(([d]) => d.startsWith(mkStr))
+    .reduce((s, [, v]) => s + v, 0);
+
+  // fallback se não tiver dado
+  if (!novosSeguidores) {
+    novosSeguidores = 0;
+  }
 
   const startMs = new Date(year, month - 1, 1).getTime();
   const endMs = new Date(year, month, 1).getTime() - 1;
