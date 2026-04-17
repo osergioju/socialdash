@@ -9,7 +9,7 @@
 const jwt = require("jsonwebtoken");
 const https = require("https");
 const prisma = require("../config/prisma");
-const { encrypt } = require("../utils/crypto");
+const { encrypt, decrypt } = require("../utils/crypto");
 
 // ─── State JWT (short-lived, CSRF protection) ─────────────────────────────────
 const STATE_SECRET = () => process.env.JWT_SECRET + "_oauth_state";
