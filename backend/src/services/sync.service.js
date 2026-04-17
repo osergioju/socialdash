@@ -197,36 +197,49 @@ async function fetchMediaInsightsBatch(pageToken, posts) {
     const requests = batch.map((p) => {
       let metrics;
       if (p.media_type === "REEL") {
-        metrics = "reach,plays,likes,comments,shares,saved,total_interactions";
+        metrics = "reach,plays,saved,shares,total_interactions";
       } else if (p.media_type === "STORY") {
-        metrics = "exits,impressions,reach,replies,taps_forward,taps_back";
+        metrics = "exits,impressions,reach,taps_forward,taps_back";
       } else {
         // IMAGE, CAROUSEL_ALBUM, VIDEO (feed)
-        metrics = "reach,impressions,saved,shares,likes,comments";
+        metrics = "reach,impressions,saved,shares";
       }
       return { relative_url: `${p.id}/insights?metric=${metrics}` };
     });
 
-    const batchResults = await httpFacebookBatch(pageToken, requests).catch(() => []);
+    console.log(`[sync/meta] batch insights — ${batch.length} posts, primeiro: ${batch[0]?.id} (${batch[0]?.media_type})`);
+    const batchResults = await httpFacebookBatch(pageToken, requests).catch((e) => {
+      console.error("[sync/meta] batch API error:", e.message);
+      return [];
+    });
+    console.log(`[sync/meta] batch response — ${batchResults.length} itens, códigos:`, batchResults.slice(0, 5).map(r => r?.code));
 
     for (let j = 0; j < batch.length; j++) {
       const item = batchResults[j];
-      if (!item || item.code !== 200) continue;
+      if (!item) { console.warn(`[sync/meta] batch item ${j} = null`); continue; }
+      if (item.code !== 200) {
+        console.warn(`[sync/meta] batch item ${j} (${batch[j].id}) code=${item.code} body=${item.body?.substring?.(0, 200)}`);
+        continue;
+      }
       try {
         const body = JSON.parse(item.body);
         const ins = {};
         for (const metric of (body.data || [])) {
-          // Insights de conta retornam array de values; os de mídia retornam value direto
           const val = metric.values?.[0]?.value ?? metric.value ?? 0;
           ins[metric.name] = typeof val === "number" ? val : 0;
         }
         insightsMap[batch[j].id] = ins;
-      } catch {
-        // ignora falhas individuais silenciosamente
+      } catch (e) {
+        console.warn(`[sync/meta] parse error item ${j}:`, e.message);
       }
     }
   }
 
+  console.log(`[sync/meta] insightsMap total: ${Object.keys(insightsMap).length} posts com dados`);
+  if (Object.keys(insightsMap).length > 0) {
+    const sample = Object.entries(insightsMap)[0];
+    console.log(`[sync/meta] amostra insight (${sample[0]}):`, sample[1]);
+  }
   return insightsMap;
 }
 
@@ -245,11 +258,15 @@ async function syncMeta(clientId, conn) {
   const igId = meta.instagramBusinessAccountId;
   const pageId = meta.pageId;
 
+  console.log(`[sync/meta] igId=${igId} pageId=${pageId}`);
+
   // Page Access Token — necessário para acessar insights da conta IG Business
   const pageTokenRes = await httpGet(
     `https://graph.facebook.com/${IG_API_VERSION}/${pageId}?fields=access_token`,
     token
   );
+  console.log(`[sync/meta] pageToken obtido: ${pageTokenRes.access_token ? "SIM" : "NÃO — usando user token"}`);
+  if (pageTokenRes.error) console.error("[sync/meta] erro ao buscar pageToken:", pageTokenRes.error);
   const pageToken = pageTokenRes.access_token || token;
 
   // Contagem atual de seguidores (snapshot — única forma disponível na API)
@@ -257,6 +274,7 @@ async function syncMeta(clientId, conn) {
     `https://graph.facebook.com/${IG_API_VERSION}/${igId}?fields=followers_count,media_count`,
     pageToken
   ).catch(() => ({}));
+  console.log(`[sync/meta] profile: followers=${profileRes.followers_count} media_count=${profileRes.media_count} error=${JSON.stringify(profileRes.error)}`);
   const currentFollowers = profileRes.followers_count || 0;
 
   const now = new Date();
@@ -265,17 +283,23 @@ async function syncMeta(clientId, conn) {
   const since90Str = new Date(now.getTime() - 90 * 24 * 3600 * 1000).toISOString().substring(0, 10);
 
   // ── Account-level insights diários (últimos 90 dias) ──────────────────────
-  // FIX: métricas válidas com period=day: reach, impressions, profile_views
-  // accounts_engaged também disponível mas não usado aqui
   const accountInsightsRes = await httpGet(
     `https://graph.facebook.com/${IG_API_VERSION}/${igId}/insights` +
     `?metric=reach,impressions,profile_views` +
     `&period=day&since=${since90Unix}&until=${untilUnix}`,
     pageToken
   ).catch((e) => {
-    console.warn("[sync/meta] account insights error:", e.message);
+    console.warn("[sync/meta] account insights network error:", e.message);
     return { data: [] };
   });
+
+  console.log(`[sync/meta] account insights — data.length=${accountInsightsRes.data?.length} error=${JSON.stringify(accountInsightsRes.error)}`);
+  if (accountInsightsRes.data?.length > 0) {
+    const sample = accountInsightsRes.data[0];
+    console.log(`[sync/meta] account insights sample — metric="${sample.name}" values.length=${sample.values?.length} primeiro valor:`, sample.values?.[0]);
+  } else {
+    console.log(`[sync/meta] account insights resposta completa:`, JSON.stringify(accountInsightsRes).substring(0, 500));
+  }
 
   const daily = { reach: {}, impressions: {}, profile_views: {} };
   for (const metric of (accountInsightsRes.data || [])) {
@@ -287,15 +311,21 @@ async function syncMeta(clientId, conn) {
       }
     }
   }
+  console.log(`[sync/meta] daily reach dias=${Object.keys(daily.reach).length} total=${Object.values(daily.reach).reduce((a,b)=>a+b,0)}`);
+  console.log(`[sync/meta] daily impressions dias=${Object.keys(daily.impressions).length} total=${Object.values(daily.impressions).reduce((a,b)=>a+b,0)}`);
+  console.log(`[sync/meta] daily profile_views dias=${Object.keys(daily.profile_views).length} total=${Object.values(daily.profile_views).reduce((a,b)=>a+b,0)}`);
 
   // ── Crescimento de seguidores ─────────────────────────────────────────────
-  // FIX: follower_count com period=day retorna SNAPSHOT total (não delta).
-  // Calculamos delta subtraindo dias consecutivos. Apenas valores positivos = novos seguidores.
   const followerSnapshotRes = await httpGet(
     `https://graph.facebook.com/${IG_API_VERSION}/${igId}/insights` +
     `?metric=follower_count&period=day&since=${since90Unix}&until=${untilUnix}`,
     pageToken
   ).catch(() => ({ data: [] }));
+
+  console.log(`[sync/meta] follower_count — data.length=${followerSnapshotRes.data?.length} error=${JSON.stringify(followerSnapshotRes.error)}`);
+  if (followerSnapshotRes.data?.length > 0) {
+    console.log(`[sync/meta] follower_count sample:`, followerSnapshotRes.data[0]?.values?.slice(0, 3));
+  }
 
   const followerSnapshots = {};
   for (const v of (followerSnapshotRes.data?.[0]?.values || [])) {
@@ -310,28 +340,32 @@ async function syncMeta(clientId, conn) {
     const delta = followerSnapshots[snapshotDays[i]] - followerSnapshots[snapshotDays[i - 1]];
     if (delta > 0) dailyFollowerGains[snapshotDays[i]] = delta;
   }
+  console.log(`[sync/meta] follower gains dias com ganho=${Object.keys(dailyFollowerGains).length} total=+${Object.values(dailyFollowerGains).reduce((a,b)=>a+b,0)}`);
 
   // ── Feed + Reels (endpoint /media) ───────────────────────────────────────
-  // FIX: NÃO buscar saved, reach, impressions, shares inline — eles retornam 0.
-  // Buscar apenas campos básicos disponíveis inline: id, media_type, timestamp, like_count, comments_count
   const mediaRes = await httpGet(
     `https://graph.facebook.com/${IG_API_VERSION}/${igId}/media` +
     `?fields=id,media_type,timestamp,like_count,comments_count&limit=100`,
     pageToken
   ).catch(() => ({ data: [] }));
 
+  console.log(`[sync/meta] media — total=${mediaRes.data?.length} error=${JSON.stringify(mediaRes.error)}`);
+
   // Filtra posts dos últimos 90 dias
   const feedAndReels = (mediaRes.data || []).filter(
     (p) => new Date(p.timestamp) >= new Date(now.getTime() - 90 * 24 * 3600 * 1000)
   );
+  const reelCount = feedAndReels.filter(p => p.media_type === "REEL").length;
+  const feedCount2 = feedAndReels.filter(p => p.media_type !== "REEL").length;
+  console.log(`[sync/meta] posts 90d — feed=${feedCount2} reels=${reelCount} total=${feedAndReels.length}`);
 
   // ── Stories (endpoint separado — NÃO aparecem no /media) ─────────────────
-  // FIX: stories precisam ser buscados em /{igId}/stories
   const storiesRes = await httpGet(
     `https://graph.facebook.com/${IG_API_VERSION}/${igId}/stories` +
     `?fields=id,media_type,timestamp&limit=100`,
     pageToken
   ).catch(() => ({ data: [] }));
+  console.log(`[sync/meta] stories — total=${storiesRes.data?.length} error=${JSON.stringify(storiesRes.error)}`);
 
   const stories = storiesRes.data || [];
 
