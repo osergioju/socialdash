@@ -197,12 +197,14 @@ async function fetchMediaInsightsBatch(pageToken, posts) {
     const requests = batch.map((p) => {
       let metrics;
       if (p.media_type === "REEL") {
+        // v22.0: plays, reach, saved, shares, total_interactions (sem impressions)
         metrics = "reach,plays,saved,shares,total_interactions";
       } else if (p.media_type === "STORY") {
-        metrics = "exits,impressions,reach,taps_forward,taps_back";
+        // v22.0: impressions removido de stories também
+        metrics = "exits,reach,taps_forward,taps_back";
       } else {
-        // IMAGE, CAROUSEL_ALBUM, VIDEO (feed)
-        metrics = "reach,impressions,saved,shares";
+        // IMAGE, CAROUSEL_ALBUM, VIDEO feed — v22.0: impressions removido
+        metrics = "reach,saved,shares";
       }
       return { relative_url: `${p.id}/insights?metric=${metrics}` };
     });
