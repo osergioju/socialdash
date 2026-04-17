@@ -193,7 +193,7 @@ async function handleCallback(platform, code, stateToken) {
   const refreshToken = tokenRes.refresh_token || null;
   const expiresIn = tokenRes.expires_in; // seconds
 
-  console.log(accessToken);
+  console.log("TOKENAX:", accessToken);
   // 3. Fetch account info
   const info = await fetchAccountInfo(platform, accessToken);
 

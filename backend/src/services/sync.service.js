@@ -22,6 +22,8 @@ function httpGet(url, token) {
       path: parsed.pathname + parsed.search,
       headers: { Authorization: `Bearer ${token}` },
     };
+    console.log("TOKEN:X ", token);
+
     https.get(opts, (res) => {
       let raw = "";
       res.on("data", (c) => { raw += c; });
@@ -354,7 +356,7 @@ async function syncMeta(clientId, conn) {
 
     // reach, views, profile_views — todos metric_type=total_value em v22.0
     const mStartUnix = Math.floor(monthStart.getTime() / 1000);
-    const mEndUnix   = Math.floor(monthEnd.getTime() / 1000);
+    const mEndUnix = Math.floor(monthEnd.getTime() / 1000);
     const insRes = await httpGet(
       `https://graph.facebook.com/${IG_API_VERSION}/${igId}/insights` +
       `?metric=reach,views,profile_views&metric_type=total_value&since=${mStartUnix}&until=${mEndUnix}`,
@@ -367,8 +369,8 @@ async function syncMeta(clientId, conn) {
     } else {
       for (const entry of (insRes.data || [])) {
         const val = entry.total_value?.value ?? 0;
-        if (entry.name === "reach")         reach = val;
-        if (entry.name === "views")         views = val;
+        if (entry.name === "reach") reach = val;
+        if (entry.name === "views") views = val;
         if (entry.name === "profile_views") profileViews = val;
       }
     }
