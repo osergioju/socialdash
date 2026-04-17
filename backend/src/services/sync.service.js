@@ -289,17 +289,11 @@ async function syncMeta(clientId, conn) {
     pageToken
   ).catch(() => ({ data: [] }));
 
-  const followerSnapshots = {};
+  // follower_count retorna DELTA DIÁRIO (ganhos/perdas por dia), NÃO total acumulado
+  const dailyNetGains = {};
   for (const v of (followerSnapshotRes.data?.[0]?.values || [])) {
     const day = v.end_time?.substring(0, 10);
-    if (day) followerSnapshots[day] = typeof v.value === "number" ? v.value : 0;
-  }
-  // Delta dia a dia → ganhos por dia
-  const dailyFollowerGains = {};
-  const snapshotDays = Object.keys(followerSnapshots).sort();
-  for (let i = 1; i < snapshotDays.length; i++) {
-    const delta = followerSnapshots[snapshotDays[i]] - followerSnapshots[snapshotDays[i - 1]];
-    if (delta > 0) dailyFollowerGains[snapshotDays[i]] = delta;
+    if (day && typeof v.value === "number") dailyNetGains[day] = v.value;
   }
 
   // ── Media: pagina até cobrir IG_MONTHS_BACK meses ────────────────────────
@@ -378,11 +372,10 @@ async function syncMeta(clientId, conn) {
     }
     console.log(`[sync/meta] ${mk} reach=${reach} views=${views} profile_views=${profileViews}`);
 
-    let novosSeguidores = Object.entries(dailyFollowerGains)
+    // novosSeguidores: soma dos ganhos positivos do mês (dados disponíveis nos últimos 30 dias)
+    const novosSeguidores = Object.entries(dailyNetGains)
       .filter(([d]) => d.startsWith(mkStr))
-      .reduce((s, [, v]) => s + v, 0);
-
-    if (!novosSeguidores) novosSeguidores = 0;
+      .reduce((s, [, v]) => s + Math.max(0, v), 0);
 
     // Agrega posts deste mês
     let feedCount = 0, reelsCount = 0, likes = 0, comments = 0;
@@ -414,22 +407,17 @@ async function syncMeta(clientId, conn) {
       storiesViews += insightsMap[s.id]?.reach ?? 0;
     }
 
-    const snapshotEntries = Object.entries(followerSnapshots)
+    // seguidores: propagado para trás a partir de currentFollowers (mais recente → mais antigo)
+    const seguidores = previousFollowers;
+    // Variação líquida do mês (para estimar o mês anterior)
+    const monthNetChange = Object.entries(dailyNetGains)
       .filter(([d]) => d.startsWith(mkStr))
-      .sort();
-
-    let lastFollowerOfMonth;
-
-    if (snapshotEntries.length) {
-      lastFollowerOfMonth = snapshotEntries[snapshotEntries.length - 1][1];
-    } else {
-      // fallback: mantém valor do mês anterior
-      lastFollowerOfMonth = previousFollowers ?? currentFollowers;
-    }
+      .reduce((s, [, v]) => s + v, 0);
+    previousFollowers = Math.max(0, previousFollowers - monthNetChange);
 
     const igData = {
       monthLabel: ml,
-      seguidores: lastFollowerOfMonth,
+      seguidores,
       novosSeguidores,
       alcanceOrganico: reach ?? 0,
       visualizacoes: views ?? 0,
@@ -447,7 +435,7 @@ async function syncMeta(clientId, conn) {
       compartilhamentosPosts: 0,
     };
 
-    previousFollowers = lastFollowerOfMonth;
+    // previousFollowers já atualizado acima via monthNetChange
 
     const existing = await prisma.instagramMetric.findUnique({ where: { clientId_month: { clientId, month: mk } } });
     if (existing) {
