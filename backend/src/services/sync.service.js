@@ -259,7 +259,11 @@ async function syncMeta(clientId, conn) {
     `https://graph.facebook.com/${IG_API_VERSION}/${pageId}?fields=access_token`,
     token
   );
+  if (pageTokenRes.error) {
+    console.warn(`[sync/meta] page token error: ${JSON.stringify(pageTokenRes.error)} — usando user token`);
+  }
   const pageToken = pageTokenRes.access_token || token;
+  console.log(`[sync/meta] igId=${igId} pageId=${pageId} usingPageToken=${!!pageTokenRes.access_token}`);
 
   // Seguidores atuais (snapshot)
   const profileRes = await httpGet(
@@ -274,11 +278,23 @@ async function syncMeta(clientId, conn) {
   const untilUnix = Math.floor(now.getTime() / 1000);
 
   // ── Account insights diários — últimos 90 dias (reach, views, profile_views) ──
-  const accountInsightsRes = await httpGet(
+  const accountInsightsUrl =
     `https://graph.facebook.com/${IG_API_VERSION}/${igId}/insights` +
-    `?metric=reach,views,profile_views&period=day&since=${since90Unix}&until=${untilUnix}`,
-    pageToken
-  ).catch(() => ({ data: [] }));
+    `?metric=reach,views,profile_views&period=day&since=${since90Unix}&until=${untilUnix}`;
+  console.log(`[sync/meta] account insights URL: ${accountInsightsUrl}`);
+  const accountInsightsRes = await httpGet(accountInsightsUrl, pageToken).catch((e) => {
+    console.error("[sync/meta] account insights fetch error:", e.message);
+    return { data: [] };
+  });
+  if (accountInsightsRes.error) {
+    console.error("[sync/meta] account insights API error:", JSON.stringify(accountInsightsRes.error));
+  } else {
+    console.log(`[sync/meta] account insights — ${accountInsightsRes.data?.length ?? 0} métricas recebidas`);
+    for (const m of (accountInsightsRes.data || [])) {
+      const total = (m.values || []).reduce((s, v) => s + (typeof v.value === "number" ? v.value : 0), 0);
+      console.log(`  metric=${m.name} total=${total} valores=${m.values?.length ?? 0}`);
+    }
+  }
 
   // Agrupa por dia: daily[metrica]["YYYY-MM-DD"] = valor
   const daily = { reach: {}, views: {}, profile_views: {} };
