@@ -172,7 +172,7 @@ function monthKey(year, month) {
 // ─── META / INSTAGRAM ─────────────────────────────────────────────────────────
 
 // Quantos meses de histórico buscar
-const IG_MONTHS_BACK = 6;
+const IG_MONTHS_BACK = 12;
 
 /**
  * Busca insights por mídia usando a Facebook Batch API.
@@ -277,7 +277,9 @@ async function syncMeta(clientId, conn) {
   const currentFollowers = profileRes.followers_count || 0;
 
   const now = new Date();
-  const since90Unix = Math.floor(new Date(now.getTime() - 90 * 24 * 3600 * 1000).getTime() / 1000);
+  const sinceUnix = Math.floor(
+    new Date(now.getFullYear(), now.getMonth() - IG_MONTHS_BACK + 1, 1).getTime() / 1000
+  );
   const since30Unix = Math.floor(new Date(now.getTime() - 30 * 24 * 3600 * 1000).getTime() / 1000);
   const untilUnix = Math.floor(now.getTime() / 1000);
 
@@ -286,7 +288,7 @@ async function syncMeta(clientId, conn) {
   // e serão buscados por mês mais abaixo.
   const reachRes = await httpGet(
     `https://graph.facebook.com/${IG_API_VERSION}/${igId}/insights` +
-    `?metric=reach&period=day&since=${since90Unix}&until=${untilUnix}`,
+    `?metric=reach&period=day&since=${sinceUnix}&until=${untilUnix}`,
     pageToken
   ).catch(() => ({ data: [] }));
 
@@ -378,12 +380,7 @@ async function syncMeta(clientId, conn) {
 
     // Views + profile_views: metric_type=total_value (uma requisição por mês)
     const mStartUnix = Math.floor(monthStart.getTime() / 1000);
-    const safeEnd = new Date(monthStart);
-    safeEnd.setDate(safeEnd.getDate() + 29);
-
-    const mEndUnix = Math.floor(
-      Math.min(safeEnd.getTime(), Date.now()) / 1000
-    );
+    const mEndUnix = Math.floor(monthEnd.getTime() / 1000);
 
     const tvRes = await httpGet(
       `https://graph.facebook.com/${IG_API_VERSION}/${igId}/insights` +
@@ -420,11 +417,11 @@ async function syncMeta(clientId, conn) {
       const pComments = p.comments_count ?? 0;
       likes += pLikes;
       comments += pComments;
-      if (p.media_type === "REEL") {
+      if (p.media_type === "REEL" || p.media_type === "VIDEO") {
         reelsCount++;
         reelsReach += ins.reach ?? 0;
         reelsInteractions += ins.total_interactions ?? (pLikes + pComments);
-      } else {
+      } else if (p.media_type === "IMAGE" || p.media_type === "CAROUSEL_ALBUM") {
         feedCount++;
       }
     }
@@ -438,9 +435,14 @@ async function syncMeta(clientId, conn) {
       storiesViews += insightsMap[s.id]?.reach ?? 0;
     }
 
+    const lastFollowerOfMonth = Object.entries(followerSnapshots)
+      .filter(([d]) => d.startsWith(mkStr))
+      .sort()
+      .pop()?.[1] || currentFollowers;
+
     const igData = {
       monthLabel: ml,
-      seguidores: currentFollowers,
+      seguidores: lastFollowerOfMonth,
       novosSeguidores,
       alcanceOrganico: reach,
       visualizacoes: views,
