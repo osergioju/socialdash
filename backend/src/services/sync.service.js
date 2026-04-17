@@ -285,9 +285,10 @@ async function syncMeta(clientId, conn) {
   const since90Str = new Date(now.getTime() - 90 * 24 * 3600 * 1000).toISOString().substring(0, 10);
 
   // ── Account-level insights diários (últimos 90 dias) ──────────────────────
+  // v22.0: "impressions" renomeado para "views" no nível de conta
   const accountInsightsRes = await httpGet(
     `https://graph.facebook.com/${IG_API_VERSION}/${igId}/insights` +
-    `?metric=reach,impressions,profile_views` +
+    `?metric=reach,views,profile_views` +
     `&period=day&since=${since90Unix}&until=${untilUnix}`,
     pageToken
   ).catch((e) => {
@@ -303,7 +304,8 @@ async function syncMeta(clientId, conn) {
     console.log(`[sync/meta] account insights resposta completa:`, JSON.stringify(accountInsightsRes).substring(0, 500));
   }
 
-  const daily = { reach: {}, impressions: {}, profile_views: {} };
+  // "views" é o novo nome de "impressions" na v22.0
+  const daily = { reach: {}, views: {}, profile_views: {} };
   for (const metric of (accountInsightsRes.data || [])) {
     for (const v of (metric.values || [])) {
       const day = v.end_time?.substring(0, 10);
@@ -314,13 +316,15 @@ async function syncMeta(clientId, conn) {
     }
   }
   console.log(`[sync/meta] daily reach dias=${Object.keys(daily.reach).length} total=${Object.values(daily.reach).reduce((a,b)=>a+b,0)}`);
-  console.log(`[sync/meta] daily impressions dias=${Object.keys(daily.impressions).length} total=${Object.values(daily.impressions).reduce((a,b)=>a+b,0)}`);
+  console.log(`[sync/meta] daily views dias=${Object.keys(daily.views).length} total=${Object.values(daily.views).reduce((a,b)=>a+b,0)}`);
   console.log(`[sync/meta] daily profile_views dias=${Object.keys(daily.profile_views).length} total=${Object.values(daily.profile_views).reduce((a,b)=>a+b,0)}`);
 
   // ── Crescimento de seguidores ─────────────────────────────────────────────
+  // FIX: follower_count aceita no máximo 30 dias entre since e until
+  const since30Unix = Math.floor(new Date(now.getTime() - 30 * 24 * 3600 * 1000).getTime() / 1000);
   const followerSnapshotRes = await httpGet(
     `https://graph.facebook.com/${IG_API_VERSION}/${igId}/insights` +
-    `?metric=follower_count&period=day&since=${since90Unix}&until=${untilUnix}`,
+    `?metric=follower_count&period=day&since=${since30Unix}&until=${untilUnix}`,
     pageToken
   ).catch(() => ({ data: [] }));
 
@@ -389,12 +393,12 @@ async function syncMeta(clientId, conn) {
     const periodStartStr = periodStart.toISOString().substring(0, 10);
 
     // Soma insights diários de conta
-    let reach = 0, impressions = 0, profileViews = 0, novosSeguidores = 0;
+    let reach = 0, views = 0, profileViews = 0, novosSeguidores = 0;
     for (const [day, val] of Object.entries(daily.reach)) {
       if (day >= periodStartStr) reach += val;
     }
-    for (const [day, val] of Object.entries(daily.impressions)) {
-      if (day >= periodStartStr) impressions += val;
+    for (const [day, val] of Object.entries(daily.views)) {
+      if (day >= periodStartStr) views += val;
     }
     for (const [day, val] of Object.entries(daily.profile_views)) {
       if (day >= periodStartStr) profileViews += val;
@@ -447,8 +451,9 @@ async function syncMeta(clientId, conn) {
       seguidores: currentFollowers,
       novosSeguidores,
       alcanceOrganico: reach,
-      visualizacoes: impressions,
-      interacoes: likes + comments + saved + shares,
+      visualizacoes: views,
+      interacoes: likes + comments,
+
       visitasPerfil: profileViews,
       postagensTotal: feedCount + reelsCount,
       reelsQtd: reelsCount,
