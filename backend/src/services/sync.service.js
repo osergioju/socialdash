@@ -277,36 +277,27 @@ async function syncMeta(clientId, conn) {
   const since30Unix = Math.floor(new Date(now.getTime() - 30 * 24 * 3600 * 1000).getTime() / 1000);
   const untilUnix = Math.floor(now.getTime() / 1000);
 
-  // ── Account insights diários — últimos 90 dias (reach, views, profile_views) ──
-  const accountInsightsUrl =
+  // ── Account insights: reach (period=day, daily time-series) ─────────────────
+  // views e profile_views NÃO aceitam period=day — precisam de metric_type=total_value
+  // e serão buscados por mês mais abaixo.
+  const reachRes = await httpGet(
     `https://graph.facebook.com/${IG_API_VERSION}/${igId}/insights` +
-    `?metric=reach,views,profile_views&period=day&since=${since90Unix}&until=${untilUnix}`;
-  console.log(`[sync/meta] account insights URL: ${accountInsightsUrl}`);
-  const accountInsightsRes = await httpGet(accountInsightsUrl, pageToken).catch((e) => {
-    console.error("[sync/meta] account insights fetch error:", e.message);
-    return { data: [] };
-  });
-  if (accountInsightsRes.error) {
-    console.error("[sync/meta] account insights API error:", JSON.stringify(accountInsightsRes.error));
-  } else {
-    console.log(`[sync/meta] account insights — ${accountInsightsRes.data?.length ?? 0} métricas recebidas`);
-    for (const m of (accountInsightsRes.data || [])) {
-      const total = (m.values || []).reduce((s, v) => s + (typeof v.value === "number" ? v.value : 0), 0);
-      console.log(`  metric=${m.name} total=${total} valores=${m.values?.length ?? 0}`);
-    }
+    `?metric=reach&period=day&since=${since90Unix}&until=${untilUnix}`,
+    pageToken
+  ).catch(() => ({ data: [] }));
+
+  if (reachRes.error) {
+    console.error("[sync/meta] reach insights error:", JSON.stringify(reachRes.error));
   }
 
-  // Agrupa por dia: daily[metrica]["YYYY-MM-DD"] = valor
-  const daily = { reach: {}, views: {}, profile_views: {} };
-  for (const metric of (accountInsightsRes.data || [])) {
+  const daily = { reach: {} };
+  for (const metric of (reachRes.data || [])) {
     for (const v of (metric.values || [])) {
       const day = v.end_time?.substring(0, 10);
-      if (day && metric.name in daily) {
-        daily[metric.name][day] = (daily[metric.name][day] || 0) + (typeof v.value === "number" ? v.value : 0);
-      }
+      if (day) daily.reach[day] = (daily.reach[day] || 0) + (typeof v.value === "number" ? v.value : 0);
     }
   }
-  console.log(`[sync/meta] account insights — reach=${Object.values(daily.reach).reduce((a, b) => a + b, 0)} views=${Object.values(daily.views).reduce((a, b) => a + b, 0)} profile_views=${Object.values(daily.profile_views).reduce((a, b) => a + b, 0)}`);
+  console.log(`[sync/meta] reach (90d) total=${Object.values(daily.reach).reduce((a, b) => a + b, 0)} dias=${Object.keys(daily.reach).length}`);
 
   // ── Follower count diário — máximo 30 dias ────────────────────────────────
   const followerSnapshotRes = await httpGet(
@@ -378,10 +369,29 @@ async function syncMeta(clientId, conn) {
     const monthEnd = new Date(year, month, 1);
     const mkStr = `${year}-${String(month).padStart(2, "0")}`;
 
-    // Soma dados diários de conta deste mês
+    // Reach: soma dos dados diários deste mês
     const reach = Object.entries(daily.reach).filter(([d]) => d.startsWith(mkStr)).reduce((s, [, v]) => s + v, 0);
-    const views = Object.entries(daily.views).filter(([d]) => d.startsWith(mkStr)).reduce((s, [, v]) => s + v, 0);
-    const profileViews = Object.entries(daily.profile_views).filter(([d]) => d.startsWith(mkStr)).reduce((s, [, v]) => s + v, 0);
+
+    // Views + profile_views: metric_type=total_value (uma requisição por mês)
+    const mStartUnix = Math.floor(monthStart.getTime() / 1000);
+    const mEndUnix   = Math.floor(monthEnd.getTime() / 1000);
+    const tvRes = await httpGet(
+      `https://graph.facebook.com/${IG_API_VERSION}/${igId}/insights` +
+      `?metric=views,profile_views&metric_type=total_value&since=${mStartUnix}&until=${mEndUnix}`,
+      pageToken
+    ).catch(() => ({ data: [] }));
+    let views = 0, profileViews = 0;
+    if (tvRes.error) {
+      console.warn(`[sync/meta] ${mk} views/profile_views error: ${tvRes.error.message}`);
+    } else {
+      for (const entry of (tvRes.data || [])) {
+        const val = entry.total_value?.value ?? 0;
+        if (entry.name === "views")         views = val;
+        if (entry.name === "profile_views") profileViews = val;
+      }
+    }
+    console.log(`[sync/meta] ${mk} reach=${reach} views=${views} profile_views=${profileViews}`);
+
     const novosSeguidores = Object.entries(dailyFollowerGains).filter(([d]) => d.startsWith(mkStr)).reduce((s, [, v]) => s + v, 0);
 
     // Agrega posts deste mês
@@ -443,13 +453,18 @@ async function syncMeta(clientId, conn) {
   }
 
   // ── Cidades (snapshot do mês atual) ──────────────────────────────────────
+  // reached_audience_demographics também requer metric_type=total_value
   const audienceRes = await httpGet(
     `https://graph.facebook.com/${IG_API_VERSION}/${igId}/insights` +
-    `?metric=reached_audience_demographics&period=lifetime&breakdown=city`,
+    `?metric=reached_audience_demographics&metric_type=total_value&period=lifetime&breakdown=city`,
     pageToken
   ).catch(() => ({ data: [] }));
 
+  if (audienceRes.error) {
+    console.warn("[sync/meta] cities error:", audienceRes.error.message);
+  }
   const cityRawData = audienceRes.data?.[0]?.total_value?.breakdowns?.[0]?.results;
+  console.log(`[sync/meta] cities raw entries: ${Array.isArray(cityRawData) ? cityRawData.length : 0}`);
   if (Array.isArray(cityRawData)) {
     const currentMk = monthKey(now.getFullYear(), now.getMonth() + 1);
     for (const entry of cityRawData.slice(0, 10)) {
