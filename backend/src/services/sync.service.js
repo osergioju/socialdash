@@ -277,33 +277,8 @@ async function syncMeta(clientId, conn) {
   const currentFollowers = profileRes.followers_count || 0;
 
   const now = new Date();
-  const sinceUnix = Math.floor(
-    new Date(now.getFullYear(), now.getMonth() - IG_MONTHS_BACK + 1, 1).getTime() / 1000
-  );
   const since30Unix = Math.floor(new Date(now.getTime() - 30 * 24 * 3600 * 1000).getTime() / 1000);
   const untilUnix = Math.floor(now.getTime() / 1000);
-
-  // ── Account insights: reach (period=day, daily time-series) ─────────────────
-  // views e profile_views NÃO aceitam period=day — precisam de metric_type=total_value
-  // e serão buscados por mês mais abaixo.
-  const reachRes = await httpGet(
-    `https://graph.facebook.com/${IG_API_VERSION}/${igId}/insights` +
-    `?metric=reach&period=day&since=${sinceUnix}&until=${untilUnix}`,
-    pageToken
-  ).catch(() => ({ data: [] }));
-
-  if (reachRes.error) {
-    console.error("[sync/meta] reach insights error:", JSON.stringify(reachRes.error));
-  }
-
-  const daily = { reach: {} };
-  for (const metric of (reachRes.data || [])) {
-    for (const v of (metric.values || [])) {
-      const day = v.end_time?.substring(0, 10);
-      if (day) daily.reach[day] = (daily.reach[day] || 0) + (typeof v.value === "number" ? v.value : 0);
-    }
-  }
-  console.log(`[sync/meta] reach (90d) total=${Object.values(daily.reach).reduce((a, b) => a + b, 0)} dias=${Object.keys(daily.reach).length}`);
 
   // ── Follower count diário — máximo 30 dias ────────────────────────────────
   const followerSnapshotRes = await httpGet(
@@ -377,46 +352,25 @@ async function syncMeta(clientId, conn) {
     const monthEnd = new Date(year, month, 1);
     const mkStr = `${year}-${String(month).padStart(2, "0")}`;
 
-    // Reach: soma dos dados diários deste mês
-    const reachValues = Object.entries(daily.reach)
-      .filter(([d]) => d.startsWith(mkStr))
-      .map(([, v]) => v);
-
-    let reach = reachValues.length
-      ? reachValues.reduce((a, b) => a + b, 0)
-      : 0;
-
-    // 🔥 fallback se vier vazio (Meta bug)
-    if (!reach) {
-      reach = Math.round(
-        Object.values(daily.reach).reduce((a, b) => a + b, 0) / IG_MONTHS_BACK
-      );
-    }
-
-    // Views + profile_views: metric_type=total_value (uma requisição por mês)
+    // reach, views, profile_views — todos metric_type=total_value em v22.0
     const mStartUnix = Math.floor(monthStart.getTime() / 1000);
-    const mEndUnix = Math.floor(monthEnd.getTime() / 1000);
-
-    const tvRes = await httpGet(
+    const mEndUnix   = Math.floor(monthEnd.getTime() / 1000);
+    const insRes = await httpGet(
       `https://graph.facebook.com/${IG_API_VERSION}/${igId}/insights` +
-      `?metric=views,profile_views` +
-      `&metric_type=total_value` +
-      `&period=day` +
-      `&since=${mStartUnix}&until=${mEndUnix}`,
+      `?metric=reach,views,profile_views&metric_type=total_value&since=${mStartUnix}&until=${mEndUnix}`,
       pageToken
-    );
+    ).catch(() => ({ data: [] }));
 
-    let views = null, profileViews = null;
-    if (tvRes.error) {
-      console.warn(`[sync/meta] ${mk} views/profile_views error: ${tvRes.error.message}`);
+    let reach = 0, views = 0, profileViews = 0;
+    if (insRes.error) {
+      console.warn(`[sync/meta] ${mk} insights error: ${insRes.error.message}`);
     } else {
-      for (const entry of (tvRes.data || [])) {
+      for (const entry of (insRes.data || [])) {
         const val = entry.total_value?.value ?? 0;
-        if (entry.name === "views") views = val;
+        if (entry.name === "reach")         reach = val;
+        if (entry.name === "views")         views = val;
         if (entry.name === "profile_views") profileViews = val;
       }
-      if (!views || views < 0) views = 0;
-      if (!profileViews || profileViews < 0) profileViews = 0;
     }
     console.log(`[sync/meta] ${mk} reach=${reach} views=${views} profile_views=${profileViews}`);
 
