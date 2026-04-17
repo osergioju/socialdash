@@ -68,4 +68,34 @@ async function revoke(req, res) {
   }
 }
 
-module.exports = { connect, callback, revoke };
+// GET /api/oauth/meta/pages?clientId=xxx
+// Lista páginas FB com IG Business vinculado para o cliente especificado.
+// Usado no fluxo de seleção de página (multi-tenant fix).
+async function listMetaPages(req, res) {
+  const { clientId } = req.query;
+  if (!clientId) return res.status(400).json({ error: "clientId é obrigatório" });
+  try {
+    const pages = await oauthService.listMetaPages(clientId);
+    res.json({ pages });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+}
+
+// POST /api/oauth/meta/select-page
+// Body: { clientId, pageId }
+// Associa uma página específica do Facebook (e seu IG Business Account) a este cliente.
+async function selectMetaPage(req, res) {
+  const { clientId, pageId } = req.body;
+  if (!clientId || !pageId) {
+    return res.status(400).json({ error: "clientId e pageId são obrigatórios" });
+  }
+  try {
+    const result = await oauthService.selectMetaPage(clientId, pageId, req.user.id);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+}
+
+module.exports = { connect, callback, revoke, listMetaPages, selectMetaPage };

@@ -14,4 +14,10 @@ export const oauthApi = {
     api.get(`/oauth/${platform}/connect`, { params: { clientId } }).then(r => r.data.url),
   revoke: (platform, clientId) =>
     api.delete(`/oauth/${platform}/revoke`, { params: { clientId } }).then(r => r.data),
+
+  // Multi-tenant: seleção de página Meta
+  listMetaPages: (clientId) =>
+    api.get("/oauth/meta/pages", { params: { clientId } }).then(r => r.data.pages),
+  selectMetaPage: (clientId, pageId) =>
+    api.post("/oauth/meta/select-page", { clientId, pageId }).then(r => r.data),
 };

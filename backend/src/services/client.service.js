@@ -40,12 +40,31 @@ async function getClient(id, userId) {
         select: {
           id: true, platform: true, status: true,
           accountId: true, accountName: true, accountEmail: true,
-          expiresAt: true, connectedAt: true,
+          expiresAt: true, connectedAt: true, metadata: true,
         },
       },
     },
   });
   if (!client) throw Object.assign(new Error("Cliente não encontrado"), { status: 404 });
+
+  // Processa metadata de cada conexão — expõe apenas campos seguros, sem tokens
+  client.connections = client.connections.map((conn) => {
+    const out = { ...conn };
+    if (conn.metadata) {
+      try {
+        const m = JSON.parse(conn.metadata);
+        if (conn.platform === "META") {
+          out.pageSelected     = !!(m.instagramBusinessAccountId && m.pageId);
+          out.pageName         = m.pageName || null;
+          out.instagramName    = m.instagramName || null;
+          out.instagramUsername = m.instagramUsername || null;
+        }
+      } catch {}
+    }
+    delete out.metadata;
+    return out;
+  });
+
   return client;
 }
 

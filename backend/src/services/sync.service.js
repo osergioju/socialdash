@@ -1,7 +1,7 @@
 /**
  * Sync service — busca métricas das APIs de cada plataforma e salva no banco.
  *
- * Meta (Instagram Business Graph API)
+ * Meta (Instagram Business Graph API v22.0)
  * LinkedIn (Organization Analytics API v2)
  * Google Analytics 4 (GA4 Data API v1beta)
  */
@@ -10,9 +10,9 @@ const https = require("https");
 const prisma = require("../config/prisma");
 const { encrypt, decrypt } = require("../utils/crypto");
 
+const IG_API_VERSION = "v22.0";
+
 // ─── HTTP helpers ─────────────────────────────────────────────────────────────
-
-
 
 function httpGet(url, token) {
   return new Promise((resolve, reject) => {
@@ -88,6 +88,42 @@ function httpPostForm(url, body) {
   });
 }
 
+/**
+ * Facebook Batch API — executa múltiplos GETs em uma única requisição HTTP.
+ * Docs: https://developers.facebook.com/docs/graph-api/batch-requests
+ *
+ * @param {string} pageToken - Page Access Token (vai no body, não no header)
+ * @param {Array<{relative_url: string}>} requests - Até 50 itens por chamada
+ */
+function httpFacebookBatch(pageToken, requests) {
+  return new Promise((resolve, reject) => {
+    const body = new URLSearchParams({
+      access_token: pageToken,
+      batch: JSON.stringify(requests.map(r => ({ method: "GET", ...r }))),
+    }).toString();
+    const opts = {
+      hostname: "graph.facebook.com",
+      path: `/${IG_API_VERSION}/`,
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Content-Length": Buffer.byteLength(body),
+      },
+    };
+    const req = https.request(opts, (res) => {
+      let raw = "";
+      res.on("data", (c) => { raw += c; });
+      res.on("end", () => {
+        try { resolve(JSON.parse(raw)); }
+        catch { resolve([]); }
+      });
+    });
+    req.on("error", reject);
+    req.write(body);
+    req.end();
+  });
+}
+
 // ─── Token refresh helpers ────────────────────────────────────────────────────
 
 async function refreshGoogleToken(conn) {
@@ -100,7 +136,6 @@ async function refreshGoogleToken(conn) {
     client_secret: process.env.GOOGLE_CLIENT_SECRET,
   });
   if (!res.access_token) throw new Error("Falha ao renovar token Google: " + (res.error_description || res.error || "unknown"));
-  // Update stored token
   await prisma.platformConnection.update({
     where: { id: conn.id },
     data: {
@@ -113,7 +148,6 @@ async function refreshGoogleToken(conn) {
 
 async function getValidToken(conn) {
   const token = decrypt(conn.accessToken);
-  // Refresh Google tokens if near expiry (< 5 min)
   if (conn.platform === "GOOGLE_ANALYTICS" && conn.expiresAt) {
     if (new Date(conn.expiresAt) - Date.now() < 5 * 60 * 1000) {
       return await refreshGoogleToken(conn);
@@ -133,40 +167,7 @@ function monthKey(year, month) {
   return `${year}-${String(month).padStart(2, "0")}`;
 }
 
-function last12Months() {
-  const months = [];
-  const now = new Date();
-  for (let i = 11; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    months.push({ year: d.getFullYear(), month: d.getMonth() + 1 });
-  }
-  return months;
-}
-
 // ─── META / INSTAGRAM ─────────────────────────────────────────────────────────
-
-async function discoverInstagramAccount(token) {
-  // Get Facebook pages managed by the user
-  const pages = await httpGet(
-    "https://graph.facebook.com/v19.0/me/accounts?fields=id,name,instagram_business_account{id,name,username,followers_count}&limit=10",
-    token
-  );
-  if (!pages.data || pages.data.length === 0) {
-    throw new Error("Nenhuma Página do Facebook encontrada. Vincule uma Página ao Meta Business.");
-  }
-  // Find first page with IG business account
-  for (const page of pages.data) {
-    if (page.instagram_business_account?.id) {
-      return {
-        pageId: page.id,
-        pageName: page.name,
-        instagramBusinessAccountId: page.instagram_business_account.id,
-        instagramName: page.instagram_business_account.name,
-      };
-    }
-  }
-  throw new Error("Nenhuma conta profissional do Instagram vinculada às Páginas do Facebook encontradas.");
-}
 
 const IG_PERIODS = [
   { key: "last_15d", label: "15 dias", days: 15 },
@@ -175,84 +176,183 @@ const IG_PERIODS = [
   { key: "last_90d", label: "90 dias", days: 90 },
 ];
 
+/**
+ * Busca insights por mídia usando a Facebook Batch API.
+ * FIX: saved, reach, impressions e shares NÃO estão disponíveis inline no /media.
+ * Eles precisam ser buscados via /{media_id}/insights separadamente.
+ *
+ * Métricas válidas por tipo:
+ *   IMAGE/CAROUSEL_ALBUM: reach, impressions, saved, shares, likes, comments
+ *   REEL/VIDEO:           reach, plays, likes, comments, shares, saved, total_interactions
+ *   STORY:                exits, impressions, reach, replies, taps_forward, taps_back
+ */
+async function fetchMediaInsightsBatch(pageToken, posts) {
+  if (posts.length === 0) return {};
+
+  const BATCH_SIZE = 50;
+  const insightsMap = {};
+
+  for (let i = 0; i < posts.length; i += BATCH_SIZE) {
+    const batch = posts.slice(i, i + BATCH_SIZE);
+    const requests = batch.map((p) => {
+      let metrics;
+      if (p.media_type === "REEL") {
+        metrics = "reach,plays,likes,comments,shares,saved,total_interactions";
+      } else if (p.media_type === "STORY") {
+        metrics = "exits,impressions,reach,replies,taps_forward,taps_back";
+      } else {
+        // IMAGE, CAROUSEL_ALBUM, VIDEO (feed)
+        metrics = "reach,impressions,saved,shares,likes,comments";
+      }
+      return { relative_url: `${p.id}/insights?metric=${metrics}` };
+    });
+
+    const batchResults = await httpFacebookBatch(pageToken, requests).catch(() => []);
+
+    for (let j = 0; j < batch.length; j++) {
+      const item = batchResults[j];
+      if (!item || item.code !== 200) continue;
+      try {
+        const body = JSON.parse(item.body);
+        const ins = {};
+        for (const metric of (body.data || [])) {
+          // Insights de conta retornam array de values; os de mídia retornam value direto
+          const val = metric.values?.[0]?.value ?? metric.value ?? 0;
+          ins[metric.name] = typeof val === "number" ? val : 0;
+        }
+        insightsMap[batch[j].id] = ins;
+      } catch {
+        // ignora falhas individuais silenciosamente
+      }
+    }
+  }
+
+  return insightsMap;
+}
+
 async function syncMeta(clientId, conn) {
   const token = await getValidToken(conn);
-  let meta = conn.metadata ? JSON.parse(conn.metadata) : {};
+  const meta = conn.metadata ? JSON.parse(conn.metadata) : {};
 
-  // Discover IG Business Account if not cached
-  if (!meta.instagramBusinessAccountId) {
-    const discovered = await discoverInstagramAccount(token);
-    meta = { ...meta, ...discovered };
-    await prisma.platformConnection.update({
-      where: { id: conn.id },
-      data: { metadata: JSON.stringify(meta) },
-    });
+  // FIX MULTI-TENANT: a página deve ser selecionada explicitamente pelo usuário.
+  // Se ainda não foi selecionada, interrompe o sync com mensagem clara.
+  if (!meta.instagramBusinessAccountId || !meta.pageId) {
+    throw new Error(
+      "Conta Instagram não selecionada. Acesse Configurações > Conexões > Meta e clique em 'Selecionar Página'."
+    );
   }
 
   const igId = meta.instagramBusinessAccountId;
   const pageId = meta.pageId;
 
-  // Get page access token for insights
+  // Page Access Token — necessário para acessar insights da conta IG Business
   const pageTokenRes = await httpGet(
-    `https://graph.facebook.com/v19.0/${pageId}?fields=access_token`,
+    `https://graph.facebook.com/${IG_API_VERSION}/${pageId}?fields=access_token`,
     token
   );
   const pageToken = pageTokenRes.access_token || token;
 
-  // Current follower count (only current snapshot available from API)
+  // Contagem atual de seguidores (snapshot — única forma disponível na API)
   const profileRes = await httpGet(
-    `https://graph.facebook.com/v19.0/${igId}?fields=followers_count`,
+    `https://graph.facebook.com/${IG_API_VERSION}/${igId}?fields=followers_count,media_count`,
     pageToken
-  );
+  ).catch(() => ({}));
   const currentFollowers = profileRes.followers_count || 0;
 
   const now = new Date();
-  const since90 = Math.floor(new Date(now.getTime() - 90 * 24 * 3600 * 1000).getTime() / 1000);
-  const until = Math.floor(now.getTime() / 1000);
+  const since90Unix = Math.floor(new Date(now.getTime() - 90 * 24 * 3600 * 1000).getTime() / 1000);
+  const untilUnix = Math.floor(now.getTime() / 1000);
+  const since90Str = new Date(now.getTime() - 90 * 24 * 3600 * 1000).toISOString().substring(0, 10);
 
-  // Fetch daily account insights for last 90 days (only window the API provides)
-  const dailyRes = await httpGet(
-    `https://graph.facebook.com/v19.0/${igId}/insights?metric=reach,impressions,profile_views&period=day&since=${since90}&until=${until}`,
+  // ── Account-level insights diários (últimos 90 dias) ──────────────────────
+  // FIX: métricas válidas com period=day: reach, impressions, profile_views
+  // accounts_engaged também disponível mas não usado aqui
+  const accountInsightsRes = await httpGet(
+    `https://graph.facebook.com/${IG_API_VERSION}/${igId}/insights` +
+    `?metric=reach,impressions,profile_views` +
+    `&period=day&since=${since90Unix}&until=${untilUnix}`,
     pageToken
-  ).catch(() => ({ data: [] }));
+  ).catch((e) => {
+    console.warn("[sync/meta] account insights error:", e.message);
+    return { data: [] };
+  });
 
   const daily = { reach: {}, impressions: {}, profile_views: {} };
-  for (const metric of (dailyRes.data || [])) {
+  for (const metric of (accountInsightsRes.data || [])) {
     for (const v of (metric.values || [])) {
       const day = v.end_time?.substring(0, 10);
-      if (day && metric.name in daily) daily[metric.name][day] = (daily[metric.name][day] || 0) + v.value;
+      if (day && metric.name in daily) {
+        const val = typeof v.value === "number" ? v.value : 0;
+        daily[metric.name][day] = (daily[metric.name][day] || 0) + val;
+      }
     }
   }
 
-  // Fetch daily net follower change (last 90 days)
-  const followerDailyRes = await httpGet(
-    `https://graph.facebook.com/v19.0/${igId}/insights?metric=follower_count&period=day&since=${since90}&until=${until}`,
+  // ── Crescimento de seguidores ─────────────────────────────────────────────
+  // FIX: follower_count com period=day retorna SNAPSHOT total (não delta).
+  // Calculamos delta subtraindo dias consecutivos. Apenas valores positivos = novos seguidores.
+  const followerSnapshotRes = await httpGet(
+    `https://graph.facebook.com/${IG_API_VERSION}/${igId}/insights` +
+    `?metric=follower_count&period=day&since=${since90Unix}&until=${untilUnix}`,
     pageToken
   ).catch(() => ({ data: [] }));
-  const dailyFollowers = {};
-  for (const v of (followerDailyRes.data?.[0]?.values || [])) {
+
+  const followerSnapshots = {};
+  for (const v of (followerSnapshotRes.data?.[0]?.values || [])) {
     const day = v.end_time?.substring(0, 10);
-    if (day) dailyFollowers[day] = v.value || 0;
+    if (day) followerSnapshots[day] = typeof v.value === "number" ? v.value : 0;
   }
 
-  // Fetch all posts from last 90 days (media endpoint — full history available)
+  // Calcula ganhos diários a partir dos snapshots
+  const dailyFollowerGains = {};
+  const snapshotDays = Object.keys(followerSnapshots).sort();
+  for (let i = 1; i < snapshotDays.length; i++) {
+    const delta = followerSnapshots[snapshotDays[i]] - followerSnapshots[snapshotDays[i - 1]];
+    if (delta > 0) dailyFollowerGains[snapshotDays[i]] = delta;
+  }
+
+  // ── Feed + Reels (endpoint /media) ───────────────────────────────────────
+  // FIX: NÃO buscar saved, reach, impressions, shares inline — eles retornam 0.
+  // Buscar apenas campos básicos disponíveis inline: id, media_type, timestamp, like_count, comments_count
   const mediaRes = await httpGet(
-    `https://graph.facebook.com/v19.0/${igId}/media?fields=id,media_type,timestamp,like_count,comments_count,shares_count,saved,reach,impressions&limit=200&since=${since90}&until=${until}`,
+    `https://graph.facebook.com/${IG_API_VERSION}/${igId}/media` +
+    `?fields=id,media_type,timestamp,like_count,comments_count&limit=100`,
     pageToken
   ).catch(() => ({ data: [] }));
-  const allPosts = mediaRes.data || [];
 
-  // Delete old monthly records, keep only period records going forward
-  await prisma.instagramMetric.deleteMany({
-    where: { clientId, NOT: { month: { in: IG_PERIODS.map(p => p.key) } } },
+  // Filtra posts dos últimos 90 dias
+  const feedAndReels = (mediaRes.data || []).filter(
+    (p) => new Date(p.timestamp) >= new Date(now.getTime() - 90 * 24 * 3600 * 1000)
+  );
+
+  // ── Stories (endpoint separado — NÃO aparecem no /media) ─────────────────
+  // FIX: stories precisam ser buscados em /{igId}/stories
+  const storiesRes = await httpGet(
+    `https://graph.facebook.com/${IG_API_VERSION}/${igId}/stories` +
+    `?fields=id,media_type,timestamp&limit=100`,
+    pageToken
+  ).catch(() => ({ data: [] }));
+
+  const stories = storiesRes.data || [];
+
+  // ── Busca insights individuais via Batch API ──────────────────────────────
+  const allMedia = [...feedAndReels, ...stories];
+  const insightsMap = await fetchMediaInsightsBatch(pageToken, allMedia).catch((e) => {
+    console.warn("[sync/meta] batch insights error:", e.message);
+    return {};
   });
 
-  // Compute and store aggregates for each period
+  // ── Elimina registros mensais antigos (modelo antigo) ────────────────────
+  await prisma.instagramMetric.deleteMany({
+    where: { clientId, NOT: { month: { in: IG_PERIODS.map((p) => p.key) } } },
+  });
+
+  // ── Agrega métricas por período ───────────────────────────────────────────
   for (const { key, label, days } of IG_PERIODS) {
     const periodStart = new Date(now.getTime() - days * 24 * 3600 * 1000);
     const periodStartStr = periodStart.toISOString().substring(0, 10);
 
-    // Sum daily insights
+    // Soma insights diários de conta
     let reach = 0, impressions = 0, profileViews = 0, novosSeguidores = 0;
     for (const [day, val] of Object.entries(daily.reach)) {
       if (day >= periodStartStr) reach += val;
@@ -263,32 +363,45 @@ async function syncMeta(clientId, conn) {
     for (const [day, val] of Object.entries(daily.profile_views)) {
       if (day >= periodStartStr) profileViews += val;
     }
-    for (const [day, val] of Object.entries(dailyFollowers)) {
-      if (day >= periodStartStr && val > 0) novosSeguidores += val;
+    for (const [day, val] of Object.entries(dailyFollowerGains)) {
+      if (day >= periodStartStr) novosSeguidores += val;
     }
 
-    // Aggregate posts for this period
-    let feedCount = 0, reelsCount = 0, storiesCount = 0;
+    // Agrega feed e reels
+    let feedCount = 0, reelsCount = 0;
     let likes = 0, comments = 0, saved = 0, shares = 0;
-    let reelsReach = 0, reelsInteractions = 0, storiesViews = 0;
+    let reelsReach = 0, reelsInteractions = 0;
 
-    for (const p of allPosts) {
+    for (const p of feedAndReels) {
       if (new Date(p.timestamp) < periodStart) continue;
-      likes    += p.like_count || 0;
-      comments += p.comments_count || 0;
-      saved    += p.saved || 0;
-      shares   += p.shares_count || 0;
+
+      const ins = insightsMap[p.id] || {};
+      const pLikes = ins.likes ?? p.like_count ?? 0;
+      const pComments = ins.comments ?? p.comments_count ?? 0;
+      const pSaved = ins.saved ?? 0;
+      const pShares = ins.shares ?? 0;
+
+      likes    += pLikes;
+      comments += pComments;
+      saved    += pSaved;
+      shares   += pShares;
 
       if (p.media_type === "REEL") {
         reelsCount++;
-        reelsReach        += p.reach || 0;
-        reelsInteractions += (p.like_count || 0) + (p.comments_count || 0) + (p.saved || 0);
-      } else if (p.media_type === "STORY") {
-        storiesCount++;
-        storiesViews += p.impressions || 0;
+        reelsReach        += ins.reach ?? 0;
+        reelsInteractions += ins.total_interactions ?? (pLikes + pComments + pSaved + pShares);
       } else {
         feedCount++;
       }
+    }
+
+    // Agrega stories do período
+    let storiesCount = 0, storiesViews = 0;
+    for (const s of stories) {
+      if (new Date(s.timestamp) < periodStart) continue;
+      storiesCount++;
+      const ins = insightsMap[s.id] || {};
+      storiesViews += ins.impressions ?? ins.reach ?? 0;
     }
 
     const igData = {
@@ -311,7 +424,9 @@ async function syncMeta(clientId, conn) {
       compartilhamentosPosts: shares,
     };
 
-    const existing = await prisma.instagramMetric.findUnique({ where: { clientId_month: { clientId, month: key } } });
+    const existing = await prisma.instagramMetric.findUnique({
+      where: { clientId_month: { clientId, month: key } },
+    });
     if (existing) {
       await prisma.instagramMetric.update({ where: { id: existing.id }, data: igData });
     } else {
@@ -319,24 +434,39 @@ async function syncMeta(clientId, conn) {
     }
   }
 
-  // City audience — snapshot, store under "last_30d"
+  // ── Audiência por cidade (snapshot) ──────────────────────────────────────
+  // NOTA: audience_city com period=lifetime foi removido pela Meta em 2023.
+  // Usando reached_audience_demographics como alternativa (disponível em v22.0+).
+  // Se a conta não tiver acesso, o catch garante que o restante do sync continua.
   const audienceRes = await httpGet(
-    `https://graph.facebook.com/v19.0/${igId}/insights?metric=audience_city&period=lifetime`,
+    `https://graph.facebook.com/${IG_API_VERSION}/${igId}/insights` +
+    `?metric=reached_audience_demographics&period=lifetime&breakdown=city`,
     pageToken
   ).catch(() => ({ data: [] }));
-  if (audienceRes.data?.[0]?.values?.[0]?.value) {
-    const cityData = audienceRes.data[0].values[0].value;
-    for (const [cityKey, count] of Object.entries(cityData).slice(0, 10)) {
-      const cityName = cityKey.replace(/_/g, " ");
-      let city = await prisma.city.findUnique({ where: { clientId_name_platform: { clientId, name: cityName, platform: "INSTAGRAM" } } });
-      if (!city) city = await prisma.city.create({ data: { clientId, name: cityName, platform: "INSTAGRAM" } });
-      const existingCm = await prisma.cityMetric.findUnique({ where: { cityId_month: { cityId: city.id, month: "last_30d" } } });
-      if (existingCm) await prisma.cityMetric.update({ where: { id: existingCm.id }, data: { seguidores: count } });
-      else await prisma.cityMetric.create({ data: { cityId: city.id, month: "last_30d", seguidores: count } });
+
+  const cityRawData = audienceRes.data?.[0]?.total_value?.breakdowns?.[0]?.results;
+  if (Array.isArray(cityRawData)) {
+    for (const entry of cityRawData.slice(0, 10)) {
+      const cityName = (entry.dimension_values?.[0] || "Desconhecido").replace(/_/g, " ");
+      const count = entry.value || 0;
+      let city = await prisma.city.findUnique({
+        where: { clientId_name_platform: { clientId, name: cityName, platform: "INSTAGRAM" } },
+      });
+      if (!city) {
+        city = await prisma.city.create({ data: { clientId, name: cityName, platform: "INSTAGRAM" } });
+      }
+      const existingCm = await prisma.cityMetric.findUnique({
+        where: { cityId_month: { cityId: city.id, month: "last_30d" } },
+      });
+      if (existingCm) {
+        await prisma.cityMetric.update({ where: { id: existingCm.id }, data: { seguidores: count } });
+      } else {
+        await prisma.cityMetric.create({ data: { cityId: city.id, month: "last_30d", seguidores: count } });
+      }
     }
   }
 
-  return { ok: true, periods: 4 };
+  return { ok: true, periods: 4, posts: feedAndReels.length, stories: stories.length };
 }
 
 // ─── LINKEDIN ─────────────────────────────────────────────────────────────────
@@ -349,7 +479,6 @@ async function discoverLinkedinOrg(token) {
   const elements = res.elements || [];
   if (elements.length === 0) throw new Error("Nenhuma organização LinkedIn encontrada para este usuário.");
   const orgUrn = elements[0].organizationalTarget;
-  // Get org details
   const orgId = orgUrn.split(":").pop();
   const orgRes = await httpGet(`https://api.linkedin.com/v2/organizations/${orgId}?fields=localizedName`, token).catch(() => ({}));
   return { organizationUrn: orgUrn, organizationId: orgId, organizationName: orgRes.localizedName || orgId };
@@ -369,14 +498,12 @@ async function syncLinkedin(clientId, conn) {
   }
 
   const orgUrn = encodeURIComponent(meta.organizationUrn);
-  const orgId = meta.organizationId;
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth() + 1;
   const mk = monthKey(year, month);
   const ml = monthLabel(year, month);
 
-  // Follower stats
   const followerRes = await httpGet(
     `https://api.linkedin.com/v2/organizationalEntityFollowerStatistics?q=organizationalEntity&organizationalEntity=${orgUrn}`,
     token
@@ -385,7 +512,6 @@ async function syncLinkedin(clientId, conn) {
   const seguidores = followerStats.totalFollowerCount || 0;
   const novosSeguidores = followerStats.followerGains?.organicFollowerGain || 0;
 
-  // Page stats (impressions, reach) - monthly granularity
   const startMs = new Date(year, month - 1, 1).getTime();
   const endMs = new Date(year, month, 1).getTime() - 1;
   const pageStatsRes = await httpGet(
@@ -394,9 +520,8 @@ async function syncLinkedin(clientId, conn) {
   ).catch(() => ({}));
   const pageEl = pageStatsRes.elements?.[0]?.totalPageStatistics || {};
   const impressoes = pageEl.views?.allPageViews?.pageViews || 0;
-  const alcance = impressoes; // LI doesn't separate reach well in v2
+  const alcance = impressoes;
 
-  // Share stats (engajamento, cliques, reações)
   const shareStatsRes = await httpGet(
     `https://api.linkedin.com/v2/organizationalEntityShareStatistics?q=organizationalEntity&organizationalEntity=${orgUrn}&timeIntervals.timeGranularityType=MONTH&timeIntervals.timeRange.start=${startMs}&timeIntervals.timeRange.end=${endMs}`,
     token
@@ -412,7 +537,6 @@ async function syncLinkedin(clientId, conn) {
   if (existingLi) await prisma.linkedinMetric.update({ where: { id: existingLi.id }, data: liData });
   else await prisma.linkedinMetric.create({ data: { clientId, month: mk, ...liData } });
 
-  // Geo data (cities/regions)
   if (followerStats.followerCountsByGeo) {
     for (const geo of followerStats.followerCountsByGeo.slice(0, 10)) {
       const cityName = geo.geo?.name || geo.geoCountryName || "Desconhecido";
@@ -425,7 +549,6 @@ async function syncLinkedin(clientId, conn) {
     }
   }
 
-  // Industry & function demographics
   if (followerStats.followerCountsByIndustry) {
     for (const ind of followerStats.followerCountsByIndustry.slice(0, 10)) {
       const nome = ind.industry?.name || `Indústria ${ind.industry?.id}`;
@@ -479,7 +602,7 @@ async function syncGa4(clientId, conn) {
     });
   }
 
-  const propertyId = meta.propertyId; // e.g. "properties/123456789"
+  const propertyId = meta.propertyId;
   const now = new Date();
   const year = now.getFullYear();
   const month = now.getMonth() + 1;
@@ -490,7 +613,6 @@ async function syncGa4(clientId, conn) {
   const lastDay = new Date(year, month, 0).getDate();
   const endDate = `${year}-${String(month).padStart(2, "0")}-${lastDay}`;
 
-  // Main metrics report
   const mainReport = await httpPost(
     `https://analyticsdata.googleapis.com/v1beta/${propertyId}:runReport`,
     token,
@@ -519,7 +641,7 @@ async function syncGa4(clientId, conn) {
   const sessoes = Math.round(get(3));
   const sessoesEngajadas = Math.round(get(4));
   const taxaEngajamento = parseFloat((get(5) * 100).toFixed(2));
-  const tempoMedioEngajamento = Math.round(get(6) / Math.max(usuariosAtivos, 1)); // duration / users = avg seconds
+  const tempoMedioEngajamento = Math.round(get(6) / Math.max(usuariosAtivos, 1));
   const viewsPorSessao = parseFloat(get(7).toFixed(2));
   const numEventos = Math.round(get(8));
 
@@ -528,7 +650,6 @@ async function syncGa4(clientId, conn) {
   if (existingGa4) await prisma.ga4Metric.update({ where: { id: existingGa4.id }, data: ga4Data });
   else await prisma.ga4Metric.create({ data: { clientId, month: mk, ...ga4Data } });
 
-  // Pages report
   const pagesReport = await httpPost(
     `https://analyticsdata.googleapis.com/v1beta/${propertyId}:runReport`,
     token,
@@ -554,7 +675,6 @@ async function syncGa4(clientId, conn) {
     else await prisma.ga4PageMetric.create({ data: { pageId: page.id, month: mk, views, tempoMedio: tempo } });
   }
 
-  // Origins/traffic sources report
   const originsReport = await httpPost(
     `https://analyticsdata.googleapis.com/v1beta/${propertyId}:runReport`,
     token,
@@ -623,9 +743,22 @@ async function syncClient(clientId) {
 async function getSyncStatus(clientId) {
   const connections = await prisma.platformConnection.findMany({
     where: { clientId },
-    select: { platform: true, status: true, lastSyncAt: true, accountName: true },
+    select: { platform: true, status: true, lastSyncAt: true, accountName: true, metadata: true },
   });
-  return connections;
+  // Indica se a página Meta foi selecionada
+  return connections.map((c) => {
+    const out = { ...c };
+    if (c.platform === "META" && c.metadata) {
+      try {
+        const m = JSON.parse(c.metadata);
+        out.pageSelected = !!(m.instagramBusinessAccountId && m.pageId);
+        out.pageName = m.pageName || null;
+        out.instagramName = m.instagramName || null;
+      } catch {}
+    }
+    delete out.metadata;
+    return out;
+  });
 }
 
 module.exports = { syncClient, getSyncStatus };

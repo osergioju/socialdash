@@ -242,4 +242,96 @@ async function revokeConnection(clientId, platform, requestingUserId) {
   });
 }
 
-module.exports = { buildAuthUrl, handleCallback, revokeConnection };
+// ─── Multi-tenant: listagem e seleção de página Meta ──────────────────────────
+
+/**
+ * Retorna todas as páginas FB com conta IG Business vinculada para este cliente.
+ * O usuário deve escolher qual página pertence a este cliente.
+ */
+async function listMetaPages(clientId) {
+  const conn = await prisma.platformConnection.findUnique({
+    where: { clientId_platform: { clientId, platform: "META" } },
+  });
+  if (!conn || !conn.accessToken) {
+    throw Object.assign(new Error("Conexão Meta não encontrada para este cliente"), { status: 404 });
+  }
+
+  const token = decrypt(conn.accessToken);
+  const pages = await httpGet(
+    "https://graph.facebook.com/v22.0/me/accounts?fields=id,name,instagram_business_account{id,name,username,followers_count}&limit=25",
+    token
+  );
+
+  if (pages.error) {
+    throw Object.assign(new Error(pages.error.message || "Erro ao listar páginas Meta"), { status: 400 });
+  }
+
+  return (pages.data || [])
+    .filter((p) => p.instagram_business_account?.id)
+    .map((p) => ({
+      pageId: p.id,
+      pageName: p.name,
+      instagramId: p.instagram_business_account.id,
+      instagramName: p.instagram_business_account.name || "",
+      instagramUsername: p.instagram_business_account.username || "",
+      followersCount: p.instagram_business_account.followers_count || 0,
+    }));
+}
+
+/**
+ * Salva a página Meta selecionada para este cliente.
+ * Resolve o problema multi-tenant: cada cliente aponta para sua própria página.
+ */
+async function selectMetaPage(clientId, pageId, requestingUserId) {
+  const conn = await prisma.platformConnection.findUnique({
+    where: { clientId_platform: { clientId, platform: "META" } },
+    include: { client: { select: { createdById: true } } },
+  });
+  if (!conn) throw Object.assign(new Error("Conexão Meta não encontrada"), { status: 404 });
+  if (conn.client.createdById !== requestingUserId) {
+    throw Object.assign(new Error("Sem permissão"), { status: 403 });
+  }
+
+  const token = decrypt(conn.accessToken);
+
+  // Busca detalhes da página selecionada + conta IG vinculada
+  const pageRes = await httpGet(
+    `https://graph.facebook.com/v22.0/${pageId}?fields=id,name,instagram_business_account{id,name,username,followers_count}`,
+    token
+  );
+  if (pageRes.error) {
+    throw Object.assign(new Error(pageRes.error.message || "Página não encontrada"), { status: 400 });
+  }
+  if (!pageRes.instagram_business_account?.id) {
+    throw Object.assign(
+      new Error("Esta página não possui uma conta Instagram Business vinculada"),
+      { status: 400 }
+    );
+  }
+
+  const igAccount = pageRes.instagram_business_account;
+  const existingMeta = conn.metadata ? JSON.parse(conn.metadata) : {};
+  const newMeta = {
+    ...existingMeta,
+    pageId: pageRes.id,
+    pageName: pageRes.name,
+    instagramBusinessAccountId: igAccount.id,
+    instagramName: igAccount.name || "",
+    instagramUsername: igAccount.username || "",
+  };
+
+  await prisma.platformConnection.update({
+    where: { clientId_platform: { clientId, platform: "META" } },
+    data: { metadata: JSON.stringify(newMeta) },
+  });
+
+  return {
+    pageId: pageRes.id,
+    pageName: pageRes.name,
+    instagramId: igAccount.id,
+    instagramName: igAccount.name,
+    instagramUsername: igAccount.username,
+  };
+}
+
+module.exports = { buildAuthUrl, handleCallback, revokeConnection, listMetaPages, selectMetaPage };

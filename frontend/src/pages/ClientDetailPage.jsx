@@ -1,12 +1,95 @@
 import React, { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, RefreshCw, CheckCircle2, AlertCircle, Clock, XCircle, Unlink, ExternalLink, Globe, StickyNote, BarChart3 } from "lucide-react";
+import { ArrowLeft, RefreshCw, CheckCircle2, AlertCircle, Clock, XCircle, Unlink, ExternalLink, Globe, StickyNote, BarChart3, Instagram } from "lucide-react";
 import AgencyLayout from "../layouts/AgencyLayout";
 import { useClient } from "../hooks/useClients";
 import { oauthApi } from "../services/clientApi";
 import { LoadingState, ErrorState } from "../components/ui/LoadingState";
 import { PLATFORM_META, STATUS_STYLE } from "../components/clients/PlatformBadge";
 import { C } from "../utils/colors";
+
+// ─── Modal de seleção de página Meta (multi-tenant fix) ───────────────────────
+function MetaPageSelectorModal({ clientId, onClose, onSaved }) {
+  const [pages,    setPages]    = useState(null);
+  const [loading,  setLoading]  = useState(true);
+  const [saving,   setSaving]   = useState(false);
+  const [selected, setSelected] = useState(null);
+  const [err,      setErr]      = useState("");
+
+  React.useEffect(() => {
+    oauthApi.listMetaPages(clientId)
+      .then(setPages)
+      .catch(e => setErr(e.response?.data?.error || "Erro ao carregar páginas"))
+      .finally(() => setLoading(false));
+  }, [clientId]);
+
+  async function handleSave() {
+    if (!selected) return;
+    setSaving(true);
+    setErr("");
+    try {
+      await oauthApi.selectMetaPage(clientId, selected);
+      onSaved();
+      onClose();
+    } catch (e) {
+      setErr(e.response?.data?.error || "Erro ao salvar página");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#00000080", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 18, width: "100%", maxWidth: 480, padding: "28px 28px 24px", display: "flex", flexDirection: "column", gap: 20 }}>
+        <div>
+          <h3 style={{ margin: "0 0 4px", fontSize: 17, fontWeight: 800, color: C.text }}>Selecionar Página do Facebook</h3>
+          <p style={{ margin: 0, fontSize: 12, color: C.textMuted, lineHeight: 1.5 }}>
+            Escolha qual página corresponde a este cliente. Cada cliente deve ter sua própria página vinculada.
+          </p>
+        </div>
+
+        {loading && <div style={{ fontSize: 13, color: C.textMuted, textAlign: "center", padding: "20px 0" }}>Carregando páginas...</div>}
+
+        {!loading && !err && pages?.length === 0 && (
+          <div style={{ fontSize: 13, color: "#F59E0B", padding: "12px 14px", background: "#F59E0B15", borderRadius: 9 }}>
+            Nenhuma página com Instagram Business encontrada nesta conta Meta.
+          </div>
+        )}
+
+        {!loading && pages && pages.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {pages.map((p) => (
+              <button key={p.pageId} onClick={() => setSelected(p.pageId)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 10, border: `2px solid ${selected === p.pageId ? "#1877F2" : C.border}`, background: selected === p.pageId ? "#1877F215" : C.cardHover, cursor: "pointer", textAlign: "left", transition: "all 0.15s" }}>
+                <div style={{ width: 36, height: 36, borderRadius: 9, background: "#1877F215", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <span style={{ fontSize: 18 }}>📄</span>
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 2 }}>{p.pageName}</div>
+                  <div style={{ fontSize: 11, color: C.textMuted }}>
+                    Instagram: <strong style={{ color: C.text }}>@{p.instagramUsername || p.instagramName}</strong>
+                    {p.followersCount > 0 && ` · ${p.followersCount.toLocaleString("pt-BR")} seguidores`}
+                  </div>
+                </div>
+                {selected === p.pageId && <CheckCircle2 size={18} color="#1877F2" style={{ flexShrink: 0 }} />}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {err && <p style={{ margin: 0, fontSize: 12, color: "#EF4444", padding: "8px 12px", background: "#EF444415", borderRadius: 7 }}>{err}</p>}
+
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: "10px", borderRadius: 9, border: `1px solid ${C.border}`, background: "transparent", cursor: "pointer", color: C.textMuted, fontSize: 13, fontFamily: "inherit" }}>
+            Cancelar
+          </button>
+          <button onClick={handleSave} disabled={!selected || saving} style={{ flex: 2, padding: "10px", borderRadius: 9, border: "none", background: (!selected || saving) ? C.border : "#1877F2", color: (!selected || saving) ? C.textDim : "#fff", cursor: (!selected || saving) ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 700, fontFamily: "inherit" }}>
+            {saving ? "Salvando..." : "Confirmar Página"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const PLATFORMS = [
   {
@@ -42,9 +125,10 @@ function StatusIcon({ status }) {
 }
 
 function PlatformCard({ platform, connection, clientId, onUpdate }) {
-  const [connecting, setConnecting] = useState(false);
-  const [revoking,   setRevoking]   = useState(false);
-  const [err, setErr]               = useState("");
+  const [connecting,       setConnecting]       = useState(false);
+  const [revoking,         setRevoking]         = useState(false);
+  const [showPageSelector, setShowPageSelector] = useState(false);
+  const [err, setErr]                           = useState("");
 
   const meta   = PLATFORM_META[platform.key];
   const status = connection?.status;
@@ -78,9 +162,19 @@ function PlatformCard({ platform, connection, clientId, onUpdate }) {
   }
 
   const isConnected = status === "CONNECTED";
+  // Para Meta: indica se a página Instagram foi selecionada (multi-tenant)
+  const needsPageSelection = platform.key === "META" && isConnected && !connection?.pageSelected;
 
   return (
-    <div style={{ background: C.card, border: `1px solid ${isConnected ? meta.color + "40" : C.border}`, borderRadius: 14, padding: 22, display: "flex", flexDirection: "column", gap: 14 }}>
+    <>
+    {showPageSelector && (
+      <MetaPageSelectorModal
+        clientId={clientId}
+        onClose={() => setShowPageSelector(false)}
+        onSaved={() => { setShowPageSelector(false); onUpdate(); }}
+      />
+    )}
+    <div style={{ background: C.card, border: `1px solid ${needsPageSelection ? "#F59E0B60" : isConnected ? meta.color + "40" : C.border}`, borderRadius: 14, padding: 22, display: "flex", flexDirection: "column", gap: 14 }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
         <div style={{ width: 40, height: 40, borderRadius: 10, background: meta.color + "18", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -107,6 +201,17 @@ function PlatformCard({ platform, connection, clientId, onUpdate }) {
             {connection.accountEmail && ` · ${connection.accountEmail}`}
           </div>
         )}
+        {isConnected && platform.key === "META" && connection?.pageSelected && (
+          <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
+            Página: <strong style={{ color: C.text }}>{connection.pageName}</strong>
+            {connection.instagramUsername && <> · <strong style={{ color: "#E1306C" }}>@{connection.instagramUsername}</strong></>}
+          </div>
+        )}
+        {needsPageSelection && (
+          <div style={{ fontSize: 11, color: "#F59E0B", marginTop: 2, display: "flex", alignItems: "center", gap: 5 }}>
+            <AlertCircle size={11} /> Página Instagram não selecionada — sync bloqueado
+          </div>
+        )}
         {isConnected && connection?.connectedAt && (
           <div style={{ fontSize: 10, color: C.textDim, marginTop: 3 }}>
             Conectado em {new Date(connection.connectedAt).toLocaleDateString("pt-BR")}
@@ -131,7 +236,7 @@ function PlatformCard({ platform, connection, clientId, onUpdate }) {
       {err && <p style={{ margin: 0, fontSize: 11, color: "#EF4444", padding: "6px 10px", background: "#EF444415", borderRadius: 7 }}>{err}</p>}
 
       {/* Actions */}
-      <div style={{ display: "flex", gap: 8, marginTop: "auto" }}>
+      <div style={{ display: "flex", gap: 8, marginTop: "auto", flexWrap: "wrap" }}>
         {!isConnected ? (
           <button onClick={handleConnect} disabled={connecting} style={{ flex: 1, padding: "10px", borderRadius: 9, border: "none", cursor: connecting ? "not-allowed" : "pointer", background: connecting ? C.border : meta.color, color: "#fff", fontSize: 13, fontWeight: 700, fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
             {connecting ? (
@@ -142,9 +247,17 @@ function PlatformCard({ platform, connection, clientId, onUpdate }) {
           </button>
         ) : (
           <>
-            <button onClick={handleConnect} disabled={connecting} style={{ flex: 1, padding: "10px", borderRadius: 9, border: `1px solid ${meta.color}40`, background: "transparent", cursor: connecting ? "not-allowed" : "pointer", color: meta.color, fontSize: 12, fontWeight: 600, fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
-              <RefreshCw size={12} /> Reconectar
-            </button>
+            {/* Botão "Selecionar Página" aparece para Meta sem página selecionada */}
+            {platform.key === "META" && (
+              <button onClick={() => setShowPageSelector(true)} style={{ flex: needsPageSelection ? 2 : 1, padding: "10px", borderRadius: 9, border: `2px solid ${needsPageSelection ? "#F59E0B" : meta.color + "40"}`, background: needsPageSelection ? "#F59E0B15" : "transparent", cursor: "pointer", color: needsPageSelection ? "#F59E0B" : meta.color, fontSize: 12, fontWeight: 700, fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+                <Instagram size={12} /> {connection?.pageSelected ? "Trocar Página" : "Selecionar Página"}
+              </button>
+            )}
+            {(!needsPageSelection || platform.key !== "META") && (
+              <button onClick={handleConnect} disabled={connecting} style={{ flex: 1, padding: "10px", borderRadius: 9, border: `1px solid ${meta.color}40`, background: "transparent", cursor: connecting ? "not-allowed" : "pointer", color: meta.color, fontSize: 12, fontWeight: 600, fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+                <RefreshCw size={12} /> Reconectar
+              </button>
+            )}
             <button onClick={handleRevoke} disabled={revoking} style={{ padding: "10px 14px", borderRadius: 9, border: `1px solid ${C.border}`, background: "transparent", cursor: revoking ? "not-allowed" : "pointer", color: "#EF4444", fontSize: 12, fontFamily: "inherit", display: "flex", alignItems: "center", gap: 5 }}>
               <Unlink size={12} /> {revoking ? "..." : "Desconectar"}
             </button>
@@ -153,6 +266,7 @@ function PlatformCard({ platform, connection, clientId, onUpdate }) {
       </div>
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
+    </>
   );
 }
 
