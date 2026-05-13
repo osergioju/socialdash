@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, RefreshCw, CheckCircle2, AlertCircle, Clock, XCircle, Unlink, ExternalLink, Globe, StickyNote, BarChart3, Instagram, BarChart2, Building2 } from "lucide-react";
 import AgencyLayout from "../layouts/AgencyLayout";
 import { useClient } from "../hooks/useClients";
@@ -284,13 +284,20 @@ function StatusIcon({ status }) {
   return <div style={{ width: size, height: size, borderRadius: "50%", border: `2px dashed ${C.textDim}` }} />;
 }
 
-function PlatformCard({ platform, connection, clientId, onUpdate }) {
+function PlatformCard({ platform, connection, clientId, onUpdate, autoOpenSelector, onAutoOpenDone }) {
   const [connecting, setConnecting] = useState(false);
   const [revoking, setRevoking] = useState(false);
   const [showPageSelector, setShowPageSelector] = useState(false);
   const [showGa4Selector, setShowGa4Selector] = useState(false);
   const [showLinkedinSelector, setShowLinkedinSelector] = useState(false);
   const [err, setErr] = useState("");
+
+  useEffect(() => {
+    if (!autoOpenSelector || !connection) return;
+    if (platform.key === "GOOGLE_ANALYTICS" && !connection.propertySelected) setShowGa4Selector(true);
+    if (platform.key === "LINKEDIN"         && !connection.orgSelected)      setShowLinkedinSelector(true);
+    onAutoOpenDone?.();
+  }, [autoOpenSelector, connection]);
 
   const meta = PLATFORM_META[platform.key];
   const status = connection?.status;
@@ -480,7 +487,15 @@ function PlatformCard({ platform, connection, clientId, onUpdate }) {
 export default function ClientDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { client, loading, error, reload } = useClient(id);
+  const [autoOpenPlatform, setAutoOpenPlatform] = useState(searchParams.get("selectPlatform"));
+
+  useEffect(() => {
+    if (autoOpenPlatform) {
+      setSearchParams({}, { replace: true });
+    }
+  }, []);
 
   if (loading) return <AgencyLayout><div style={{ padding: 40 }}><LoadingState /></div></AgencyLayout>;
   if (error) return <AgencyLayout><div style={{ padding: 40 }}><ErrorState message={error} /></div></AgencyLayout>;
@@ -544,6 +559,8 @@ export default function ClientDetailPage() {
               connection={client.connections?.find(c => c.platform === p.key)}
               clientId={client.id}
               onUpdate={reload}
+              autoOpenSelector={autoOpenPlatform === p.key}
+              onAutoOpenDone={() => setAutoOpenPlatform(null)}
             />
           ))}
         </div>

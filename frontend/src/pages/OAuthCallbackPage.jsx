@@ -18,7 +18,11 @@ export default function OAuthCallbackPage() {
   const platform   = params.get("platform");
   const clientId   = params.get("clientId");
   const errorMsg   = params.get("error");
-  const target     = clientId ? `/clients/${clientId}` : "/clients";
+  const NEEDS_SELECTION = ["GOOGLE_ANALYTICS", "LINKEDIN"];
+  const needsSelector  = success && platform && NEEDS_SELECTION.includes(platform);
+  const target         = clientId
+    ? `/clients/${clientId}${needsSelector ? `?selectPlatform=${platform}` : ""}`
+    : "/clients";
 
   useEffect(() => {
     const t = setInterval(() => setCount(c => c - 1), 1000);
