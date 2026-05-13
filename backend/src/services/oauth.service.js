@@ -335,4 +335,127 @@ async function selectMetaPage(clientId, pageId, requestingUserId) {
   };
 }
 
-module.exports = { buildAuthUrl, handleCallback, revokeConnection, listMetaPages, selectMetaPage };
+// ─── GA4: listagem e seleção de propriedade ───────────────────────────────────
+
+async function listGa4Properties(clientId) {
+  const conn = await prisma.platformConnection.findUnique({
+    where: { clientId_platform: { clientId, platform: "GOOGLE_ANALYTICS" } },
+  });
+  if (!conn || !conn.accessToken) {
+    throw Object.assign(new Error("Conexão Google não encontrada para este cliente"), { status: 404 });
+  }
+
+  const token = decrypt(conn.accessToken);
+  const res = await httpGet("https://analyticsadmin.googleapis.com/v1alpha/accountSummaries", token);
+
+  if (res.error) {
+    throw Object.assign(new Error(res.error.message || "Erro ao listar propriedades GA4. Token pode ter expirado — reconecte."), { status: 400 });
+  }
+
+  const properties = [];
+  for (const acc of (res.accountSummaries || [])) {
+    for (const prop of (acc.propertySummaries || [])) {
+      properties.push({
+        propertyId: prop.property,
+        propertyName: prop.displayName,
+        accountName: acc.displayName,
+      });
+    }
+  }
+  return properties;
+}
+
+async function selectGa4Property(clientId, propertyId, requestingUserId) {
+  const conn = await prisma.platformConnection.findUnique({
+    where: { clientId_platform: { clientId, platform: "GOOGLE_ANALYTICS" } },
+    include: { client: { select: { createdById: true } } },
+  });
+  if (!conn) throw Object.assign(new Error("Conexão Google não encontrada"), { status: 404 });
+  if (conn.client.createdById !== requestingUserId) {
+    throw Object.assign(new Error("Sem permissão"), { status: 403 });
+  }
+
+  const token = decrypt(conn.accessToken);
+  const propRes = await httpGet(`https://analyticsadmin.googleapis.com/v1alpha/${propertyId}`, token).catch(() => null);
+  const propertyName = propRes?.displayName || propertyId;
+
+  const existingMeta = conn.metadata ? JSON.parse(conn.metadata) : {};
+  await prisma.platformConnection.update({
+    where: { clientId_platform: { clientId, platform: "GOOGLE_ANALYTICS" } },
+    data: { metadata: JSON.stringify({ ...existingMeta, propertyId, propertyName }) },
+  });
+
+  return { propertyId, propertyName };
+}
+
+// ─── LinkedIn: listagem e seleção de organização ──────────────────────────────
+
+async function listLinkedinOrgs(clientId) {
+  const conn = await prisma.platformConnection.findUnique({
+    where: { clientId_platform: { clientId, platform: "LINKEDIN" } },
+  });
+  if (!conn || !conn.accessToken) {
+    throw Object.assign(new Error("Conexão LinkedIn não encontrada para este cliente"), { status: 404 });
+  }
+
+  const token = decrypt(conn.accessToken);
+  const res = await httpGet(
+    "https://api.linkedin.com/v2/organizationalEntityAcls?q=roleAssignee&role=ADMINISTRATOR&state=APPROVED&count=25",
+    token
+  );
+
+  if (res.serviceErrorCode || res.status === 403) {
+    throw Object.assign(new Error("Permissão negada pelo LinkedIn. Verifique os escopos do app."), { status: 403 });
+  }
+
+  const orgs = [];
+  for (const el of (res.elements || [])) {
+    const orgUrn = el.organizationalTarget;
+    const orgId = orgUrn.split(":").pop();
+    const orgRes = await httpGet(
+      `https://api.linkedin.com/v2/organizations/${orgId}?fields=localizedName,vanityName`,
+      token
+    ).catch(() => ({}));
+    orgs.push({
+      organizationUrn: orgUrn,
+      organizationId: orgId,
+      organizationName: orgRes.localizedName || orgId,
+      vanityName: orgRes.vanityName || null,
+    });
+  }
+  return orgs;
+}
+
+async function selectLinkedinOrg(clientId, organizationUrn, requestingUserId) {
+  const conn = await prisma.platformConnection.findUnique({
+    where: { clientId_platform: { clientId, platform: "LINKEDIN" } },
+    include: { client: { select: { createdById: true } } },
+  });
+  if (!conn) throw Object.assign(new Error("Conexão LinkedIn não encontrada"), { status: 404 });
+  if (conn.client.createdById !== requestingUserId) {
+    throw Object.assign(new Error("Sem permissão"), { status: 403 });
+  }
+
+  const token = decrypt(conn.accessToken);
+  const orgId = organizationUrn.split(":").pop();
+  const orgRes = await httpGet(
+    `https://api.linkedin.com/v2/organizations/${orgId}?fields=localizedName`,
+    token
+  ).catch(() => ({}));
+  const organizationName = orgRes.localizedName || orgId;
+
+  const existingMeta = conn.metadata ? JSON.parse(conn.metadata) : {};
+  await prisma.platformConnection.update({
+    where: { clientId_platform: { clientId, platform: "LINKEDIN" } },
+    data: { metadata: JSON.stringify({ ...existingMeta, organizationUrn, organizationId: orgId, organizationName }) },
+  });
+
+  return { organizationUrn, organizationId: orgId, organizationName };
+}
+
+module.exports = {
+  buildAuthUrl, handleCallback, revokeConnection,
+  listMetaPages, selectMetaPage,
+  listGa4Properties, selectGa4Property,
+  listLinkedinOrgs, selectLinkedinOrg,
+};

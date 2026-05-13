@@ -194,23 +194,34 @@ enum Platform {
 }
 
 model Theme {
-  id                  String   @id @default(cuid())
-  clientId            String
-  client              Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  tema                String
-  icon                String
-  platform            Platform
-  curtidas            Int?
-  comentarios         Int?
-  compartilhamentos   Int?
-  alcanceMedio        Int?
-  engajamento         Int?
-  cliques             Int?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id        String        @id @default(cuid())
+  clientId  String
+  client    Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tema      String
+  icon      String
+  platform  Platform
+  metrics   ThemeMetric[]
+  createdAt DateTime      @default(now())
 
   @@unique([clientId, platform, tema])
   @@map("themes")
+}
+
+model ThemeMetric {
+  id                String   @id @default(cuid())
+  themeId           String
+  theme             Theme    @relation(fields: [themeId], references: [id], onDelete: Cascade)
+  month             String
+  curtidas          Int?
+  comentarios       Int?
+  compartilhamentos Int?
+  alcanceMedio      Int?
+  engajamento       Int?
+  cliques           Int?
+  createdAt         DateTime @default(now())
+
+  @@unique([themeId, month])
+  @@map("theme_metrics")
 }
 
 model Ga4Page {
@@ -262,25 +273,47 @@ model Ga4OriginMetric {
 }
 
 model LinkedinIndustry {
-  id         String   @id @default(cuid())
-  clientId   String
-  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  nome       String
-  seguidores Int
-  updatedAt  DateTime @updatedAt
+  id        String                   @id @default(cuid())
+  clientId  String
+  client    Client                   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  nome      String
+  metrics   LinkedinIndustryMetric[]
 
   @@unique([clientId, nome])
   @@map("linkedin_industries")
 }
 
-model LinkedinRole {
-  id         String   @id @default(cuid())
-  clientId   String
-  client     Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  nome       String
+model LinkedinIndustryMetric {
+  id         String           @id @default(cuid())
+  industryId String
+  industry   LinkedinIndustry @relation(fields: [industryId], references: [id], onDelete: Cascade)
+  month      String
   seguidores Int
-  updatedAt  DateTime @updatedAt
+  createdAt  DateTime         @default(now())
+
+  @@unique([industryId, month])
+  @@map("linkedin_industry_metrics")
+}
+
+model LinkedinRole {
+  id        String               @id @default(cuid())
+  clientId  String
+  client    Client               @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  nome      String
+  metrics   LinkedinRoleMetric[]
 
   @@unique([clientId, nome])
   @@map("linkedin_roles")
+}
+
+model LinkedinRoleMetric {
+  id         String       @id @default(cuid())
+  roleId     String
+  role       LinkedinRole @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  month      String
+  seguidores Int
+  createdAt  DateTime     @default(now())
+
+  @@unique([roleId, month])
+  @@map("linkedin_role_metrics")
 }

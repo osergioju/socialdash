@@ -98,4 +98,58 @@ async function selectMetaPage(req, res) {
   }
 }
 
-module.exports = { connect, callback, revoke, listMetaPages, selectMetaPage };
+// GET /api/oauth/google/properties?clientId=xxx
+async function listGa4Properties(req, res) {
+  const { clientId } = req.query;
+  if (!clientId) return res.status(400).json({ error: "clientId é obrigatório" });
+  try {
+    const properties = await oauthService.listGa4Properties(clientId);
+    res.json({ properties });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+}
+
+// POST /api/oauth/google/select-property
+// Body: { clientId, propertyId }
+async function selectGa4Property(req, res) {
+  const { clientId, propertyId } = req.body;
+  if (!clientId || !propertyId) {
+    return res.status(400).json({ error: "clientId e propertyId são obrigatórios" });
+  }
+  try {
+    const result = await oauthService.selectGa4Property(clientId, propertyId, req.user.id);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+}
+
+// GET /api/oauth/linkedin/orgs?clientId=xxx
+async function listLinkedinOrgs(req, res) {
+  const { clientId } = req.query;
+  if (!clientId) return res.status(400).json({ error: "clientId é obrigatório" });
+  try {
+    const orgs = await oauthService.listLinkedinOrgs(clientId);
+    res.json({ orgs });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+}
+
+// POST /api/oauth/linkedin/select-org
+// Body: { clientId, organizationUrn }
+async function selectLinkedinOrg(req, res) {
+  const { clientId, organizationUrn } = req.body;
+  if (!clientId || !organizationUrn) {
+    return res.status(400).json({ error: "clientId e organizationUrn são obrigatórios" });
+  }
+  try {
+    const result = await oauthService.selectLinkedinOrg(clientId, organizationUrn, req.user.id);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+}
+
+module.exports = { connect, callback, revoke, listMetaPages, selectMetaPage, listGa4Properties, selectGa4Property, listLinkedinOrgs, selectLinkedinOrg };

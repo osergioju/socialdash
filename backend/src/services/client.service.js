@@ -54,10 +54,20 @@ async function getClient(id, userId) {
       try {
         const m = JSON.parse(conn.metadata);
         if (conn.platform === "META") {
-          out.pageSelected     = !!(m.instagramBusinessAccountId && m.pageId);
-          out.pageName         = m.pageName || null;
-          out.instagramName    = m.instagramName || null;
+          out.pageSelected      = !!(m.instagramBusinessAccountId && m.pageId);
+          out.pageName          = m.pageName || null;
+          out.instagramName     = m.instagramName || null;
           out.instagramUsername = m.instagramUsername || null;
+        }
+        if (conn.platform === "GOOGLE_ANALYTICS") {
+          out.propertySelected = !!m.propertyId;
+          out.propertyId       = m.propertyId || null;
+          out.propertyName     = m.propertyName || null;
+        }
+        if (conn.platform === "LINKEDIN") {
+          out.orgSelected      = !!m.organizationUrn;
+          out.organizationName = m.organizationName || null;
+          out.vanityName       = m.vanityName || null;
         }
       } catch {}
     }

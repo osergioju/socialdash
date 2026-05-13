@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, RefreshCw, CheckCircle2, AlertCircle, Clock, XCircle, Unlink, ExternalLink, Globe, StickyNote, BarChart3, Instagram } from "lucide-react";
+import { ArrowLeft, RefreshCw, CheckCircle2, AlertCircle, Clock, XCircle, Unlink, ExternalLink, Globe, StickyNote, BarChart3, Instagram, BarChart2, Building2 } from "lucide-react";
 import AgencyLayout from "../layouts/AgencyLayout";
 import { useClient } from "../hooks/useClients";
 import { oauthApi } from "../services/clientApi";
@@ -91,6 +91,166 @@ function MetaPageSelectorModal({ clientId, onClose, onSaved }) {
   );
 }
 
+// ─── Modal de seleção de propriedade GA4 ─────────────────────────────────────
+function Ga4PropertySelectorModal({ clientId, onClose, onSaved }) {
+  const [properties, setProperties] = useState(null);
+  const [loading,    setLoading]    = useState(true);
+  const [saving,     setSaving]     = useState(false);
+  const [selected,   setSelected]   = useState(null);
+  const [err,        setErr]        = useState("");
+
+  React.useEffect(() => {
+    oauthApi.listGa4Properties(clientId)
+      .then(setProperties)
+      .catch(e => setErr(e.response?.data?.error || "Erro ao carregar propriedades"))
+      .finally(() => setLoading(false));
+  }, [clientId]);
+
+  async function handleSave() {
+    if (!selected) return;
+    setSaving(true);
+    setErr("");
+    try {
+      await oauthApi.selectGa4Property(clientId, selected);
+      onSaved();
+      onClose();
+    } catch (e) {
+      setErr(e.response?.data?.error || "Erro ao salvar propriedade");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#00000080", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 18, width: "100%", maxWidth: 480, padding: "28px 28px 24px", display: "flex", flexDirection: "column", gap: 20 }}>
+        <div>
+          <h3 style={{ margin: "0 0 4px", fontSize: 17, fontWeight: 800, color: C.text }}>Selecionar Propriedade GA4</h3>
+          <p style={{ margin: 0, fontSize: 12, color: C.textMuted, lineHeight: 1.5 }}>
+            Escolha qual propriedade do Google Analytics corresponde a este cliente.
+          </p>
+        </div>
+
+        {loading && <div style={{ fontSize: 13, color: C.textMuted, textAlign: "center", padding: "20px 0" }}>Carregando propriedades...</div>}
+
+        {!loading && !err && properties?.length === 0 && (
+          <div style={{ fontSize: 13, color: "#F59E0B", padding: "12px 14px", background: "#F59E0B15", borderRadius: 9 }}>
+            Nenhuma propriedade GA4 encontrada nesta conta Google.
+          </div>
+        )}
+
+        {!loading && properties && properties.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {properties.map((p) => (
+              <button key={p.propertyId} onClick={() => setSelected(p.propertyId)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 10, border: `2px solid ${selected === p.propertyId ? "#4285F4" : C.border}`, background: selected === p.propertyId ? "#4285F415" : C.cardHover, cursor: "pointer", textAlign: "left", transition: "all 0.15s" }}>
+                <div style={{ width: 36, height: 36, borderRadius: 9, background: "#4285F415", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <BarChart2 size={18} color="#4285F4" />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 2 }}>{p.propertyName}</div>
+                  <div style={{ fontSize: 11, color: C.textMuted }}>{p.accountName} · <span style={{ fontFamily: "monospace", fontSize: 10 }}>{p.propertyId}</span></div>
+                </div>
+                {selected === p.propertyId && <CheckCircle2 size={18} color="#4285F4" style={{ flexShrink: 0 }} />}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {err && <p style={{ margin: 0, fontSize: 12, color: "#EF4444", padding: "8px 12px", background: "#EF444415", borderRadius: 7 }}>{err}</p>}
+
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: "10px", borderRadius: 9, border: `1px solid ${C.border}`, background: "transparent", cursor: "pointer", color: C.textMuted, fontSize: 13, fontFamily: "inherit" }}>
+            Cancelar
+          </button>
+          <button onClick={handleSave} disabled={!selected || saving} style={{ flex: 2, padding: "10px", borderRadius: 9, border: "none", background: (!selected || saving) ? C.border : "#4285F4", color: (!selected || saving) ? C.textDim : "#fff", cursor: (!selected || saving) ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 700, fontFamily: "inherit" }}>
+            {saving ? "Salvando..." : "Confirmar Propriedade"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Modal de seleção de organização LinkedIn ─────────────────────────────────
+function LinkedinOrgSelectorModal({ clientId, onClose, onSaved }) {
+  const [orgs,    setOrgs]    = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving,  setSaving]  = useState(false);
+  const [selected, setSelected] = useState(null);
+  const [err,     setErr]     = useState("");
+
+  React.useEffect(() => {
+    oauthApi.listLinkedinOrgs(clientId)
+      .then(setOrgs)
+      .catch(e => setErr(e.response?.data?.error || "Erro ao carregar organizações"))
+      .finally(() => setLoading(false));
+  }, [clientId]);
+
+  async function handleSave() {
+    if (!selected) return;
+    setSaving(true);
+    setErr("");
+    try {
+      await oauthApi.selectLinkedinOrg(clientId, selected);
+      onSaved();
+      onClose();
+    } catch (e) {
+      setErr(e.response?.data?.error || "Erro ao salvar organização");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "#00000080", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 18, width: "100%", maxWidth: 480, padding: "28px 28px 24px", display: "flex", flexDirection: "column", gap: 20 }}>
+        <div>
+          <h3 style={{ margin: "0 0 4px", fontSize: 17, fontWeight: 800, color: C.text }}>Selecionar Organização LinkedIn</h3>
+          <p style={{ margin: 0, fontSize: 12, color: C.textMuted, lineHeight: 1.5 }}>
+            Escolha qual organização LinkedIn corresponde a este cliente.
+          </p>
+        </div>
+
+        {loading && <div style={{ fontSize: 13, color: C.textMuted, textAlign: "center", padding: "20px 0" }}>Carregando organizações...</div>}
+
+        {!loading && !err && orgs?.length === 0 && (
+          <div style={{ fontSize: 13, color: "#F59E0B", padding: "12px 14px", background: "#F59E0B15", borderRadius: 9 }}>
+            Nenhuma organização encontrada. Verifique se você é administrador de alguma página.
+          </div>
+        )}
+
+        {!loading && orgs && orgs.length > 0 && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {orgs.map((o) => (
+              <button key={o.organizationUrn} onClick={() => setSelected(o.organizationUrn)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 10, border: `2px solid ${selected === o.organizationUrn ? "#0A66C2" : C.border}`, background: selected === o.organizationUrn ? "#0A66C215" : C.cardHover, cursor: "pointer", textAlign: "left", transition: "all 0.15s" }}>
+                <div style={{ width: 36, height: 36, borderRadius: 9, background: "#0A66C215", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <Building2 size={18} color="#0A66C2" />
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: C.text, marginBottom: 2 }}>{o.organizationName}</div>
+                  {o.vanityName && <div style={{ fontSize: 11, color: C.textMuted }}>linkedin.com/company/{o.vanityName}</div>}
+                </div>
+                {selected === o.organizationUrn && <CheckCircle2 size={18} color="#0A66C2" style={{ flexShrink: 0 }} />}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {err && <p style={{ margin: 0, fontSize: 12, color: "#EF4444", padding: "8px 12px", background: "#EF444415", borderRadius: 7 }}>{err}</p>}
+
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={onClose} style={{ flex: 1, padding: "10px", borderRadius: 9, border: `1px solid ${C.border}`, background: "transparent", cursor: "pointer", color: C.textMuted, fontSize: 13, fontFamily: "inherit" }}>
+            Cancelar
+          </button>
+          <button onClick={handleSave} disabled={!selected || saving} style={{ flex: 2, padding: "10px", borderRadius: 9, border: "none", background: (!selected || saving) ? C.border : "#0A66C2", color: (!selected || saving) ? C.textDim : "#fff", cursor: (!selected || saving) ? "not-allowed" : "pointer", fontSize: 13, fontWeight: 700, fontFamily: "inherit" }}>
+            {saving ? "Salvando..." : "Confirmar Organização"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const PLATFORMS = [
   {
     key: "META",
@@ -125,10 +285,12 @@ function StatusIcon({ status }) {
 }
 
 function PlatformCard({ platform, connection, clientId, onUpdate }) {
-  const [connecting,       setConnecting]       = useState(false);
-  const [revoking,         setRevoking]         = useState(false);
-  const [showPageSelector, setShowPageSelector] = useState(false);
-  const [err, setErr]                           = useState("");
+  const [connecting,          setConnecting]          = useState(false);
+  const [revoking,            setRevoking]            = useState(false);
+  const [showPageSelector,    setShowPageSelector]    = useState(false);
+  const [showGa4Selector,     setShowGa4Selector]     = useState(false);
+  const [showLinkedinSelector, setShowLinkedinSelector] = useState(false);
+  const [err, setErr]                                 = useState("");
 
   const meta   = PLATFORM_META[platform.key];
   const status = connection?.status;
@@ -162,8 +324,10 @@ function PlatformCard({ platform, connection, clientId, onUpdate }) {
   }
 
   const isConnected = status === "CONNECTED";
-  // Para Meta: indica se a página Instagram foi selecionada (multi-tenant)
-  const needsPageSelection = platform.key === "META" && isConnected && !connection?.pageSelected;
+  const needsPageSelection     = platform.key === "META"             && isConnected && !connection?.pageSelected;
+  const needsPropertySelection = platform.key === "GOOGLE_ANALYTICS" && isConnected && !connection?.propertySelected;
+  const needsOrgSelection      = platform.key === "LINKEDIN"         && isConnected && !connection?.orgSelected;
+  const needsSelection = needsPageSelection || needsPropertySelection || needsOrgSelection;
 
   return (
     <>
@@ -174,7 +338,21 @@ function PlatformCard({ platform, connection, clientId, onUpdate }) {
         onSaved={() => { setShowPageSelector(false); onUpdate(); }}
       />
     )}
-    <div style={{ background: C.card, border: `1px solid ${needsPageSelection ? "#F59E0B60" : isConnected ? meta.color + "40" : C.border}`, borderRadius: 14, padding: 22, display: "flex", flexDirection: "column", gap: 14 }}>
+    {showGa4Selector && (
+      <Ga4PropertySelectorModal
+        clientId={clientId}
+        onClose={() => setShowGa4Selector(false)}
+        onSaved={() => { setShowGa4Selector(false); onUpdate(); }}
+      />
+    )}
+    {showLinkedinSelector && (
+      <LinkedinOrgSelectorModal
+        clientId={clientId}
+        onClose={() => setShowLinkedinSelector(false)}
+        onSaved={() => { setShowLinkedinSelector(false); onUpdate(); }}
+      />
+    )}
+    <div style={{ background: C.card, border: `1px solid ${needsSelection ? "#F59E0B60" : isConnected ? meta.color + "40" : C.border}`, borderRadius: 14, padding: 22, display: "flex", flexDirection: "column", gap: 14 }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
         <div style={{ width: 40, height: 40, borderRadius: 10, background: meta.color + "18", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -212,6 +390,26 @@ function PlatformCard({ platform, connection, clientId, onUpdate }) {
             <AlertCircle size={11} /> Página Instagram não selecionada — sync bloqueado
           </div>
         )}
+        {isConnected && platform.key === "GOOGLE_ANALYTICS" && connection?.propertySelected && (
+          <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
+            Propriedade: <strong style={{ color: C.text }}>{connection.propertyName || connection.propertyId}</strong>
+          </div>
+        )}
+        {needsPropertySelection && (
+          <div style={{ fontSize: 11, color: "#F59E0B", marginTop: 2, display: "flex", alignItems: "center", gap: 5 }}>
+            <AlertCircle size={11} /> Propriedade GA4 não selecionada — sync bloqueado
+          </div>
+        )}
+        {isConnected && platform.key === "LINKEDIN" && connection?.orgSelected && (
+          <div style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>
+            Organização: <strong style={{ color: C.text }}>{connection.organizationName}</strong>
+          </div>
+        )}
+        {needsOrgSelection && (
+          <div style={{ fontSize: 11, color: "#F59E0B", marginTop: 2, display: "flex", alignItems: "center", gap: 5 }}>
+            <AlertCircle size={11} /> Organização LinkedIn não selecionada — sync bloqueado
+          </div>
+        )}
         {isConnected && connection?.connectedAt && (
           <div style={{ fontSize: 10, color: C.textDim, marginTop: 3 }}>
             Conectado em {new Date(connection.connectedAt).toLocaleDateString("pt-BR")}
@@ -247,13 +445,22 @@ function PlatformCard({ platform, connection, clientId, onUpdate }) {
           </button>
         ) : (
           <>
-            {/* Botão "Selecionar Página" aparece para Meta sem página selecionada */}
             {platform.key === "META" && (
               <button onClick={() => setShowPageSelector(true)} style={{ flex: needsPageSelection ? 2 : 1, padding: "10px", borderRadius: 9, border: `2px solid ${needsPageSelection ? "#F59E0B" : meta.color + "40"}`, background: needsPageSelection ? "#F59E0B15" : "transparent", cursor: "pointer", color: needsPageSelection ? "#F59E0B" : meta.color, fontSize: 12, fontWeight: 700, fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
                 <Instagram size={12} /> {connection?.pageSelected ? "Trocar Página" : "Selecionar Página"}
               </button>
             )}
-            {(!needsPageSelection || platform.key !== "META") && (
+            {platform.key === "GOOGLE_ANALYTICS" && (
+              <button onClick={() => setShowGa4Selector(true)} style={{ flex: needsPropertySelection ? 2 : 1, padding: "10px", borderRadius: 9, border: `2px solid ${needsPropertySelection ? "#F59E0B" : meta.color + "40"}`, background: needsPropertySelection ? "#F59E0B15" : "transparent", cursor: "pointer", color: needsPropertySelection ? "#F59E0B" : meta.color, fontSize: 12, fontWeight: 700, fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+                <BarChart2 size={12} /> {connection?.propertySelected ? "Trocar Propriedade" : "Selecionar Propriedade"}
+              </button>
+            )}
+            {platform.key === "LINKEDIN" && (
+              <button onClick={() => setShowLinkedinSelector(true)} style={{ flex: needsOrgSelection ? 2 : 1, padding: "10px", borderRadius: 9, border: `2px solid ${needsOrgSelection ? "#F59E0B" : meta.color + "40"}`, background: needsOrgSelection ? "#F59E0B15" : "transparent", cursor: "pointer", color: needsOrgSelection ? "#F59E0B" : meta.color, fontSize: 12, fontWeight: 700, fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+                <Building2 size={12} /> {connection?.orgSelected ? "Trocar Organização" : "Selecionar Organização"}
+              </button>
+            )}
+            {!needsSelection && (
               <button onClick={handleConnect} disabled={connecting} style={{ flex: 1, padding: "10px", borderRadius: 9, border: `1px solid ${meta.color}40`, background: "transparent", cursor: connecting ? "not-allowed" : "pointer", color: meta.color, fontSize: 12, fontWeight: 600, fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
                 <RefreshCw size={12} /> Reconectar
               </button>

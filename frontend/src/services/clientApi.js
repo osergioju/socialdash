@@ -20,4 +20,16 @@ export const oauthApi = {
     api.get("/oauth/meta/pages", { params: { clientId } }).then(r => r.data.pages),
   selectMetaPage: (clientId, pageId) =>
     api.post("/oauth/meta/select-page", { clientId, pageId }).then(r => r.data),
+
+  // Seleção de propriedade GA4
+  listGa4Properties: (clientId) =>
+    api.get("/oauth/google/properties", { params: { clientId } }).then(r => r.data.properties),
+  selectGa4Property: (clientId, propertyId) =>
+    api.post("/oauth/google/select-property", { clientId, propertyId }).then(r => r.data),
+
+  // Seleção de organização LinkedIn
+  listLinkedinOrgs: (clientId) =>
+    api.get("/oauth/linkedin/orgs", { params: { clientId } }).then(r => r.data.orgs),
+  selectLinkedinOrg: (clientId, organizationUrn) =>
+    api.post("/oauth/linkedin/select-org", { clientId, organizationUrn }).then(r => r.data),
 };
