@@ -57,7 +57,7 @@ function MetaPageSelectorModal({ clientId, onClose, onSaved }) {
         )}
 
         {!loading && pages && pages.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 320, overflowY: "auto", paddingRight: 4 }}>
             {pages.map((p) => (
               <button key={p.pageId} onClick={() => setSelected(p.pageId)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 10, border: `2px solid ${selected === p.pageId ? "#1877F2" : C.border}`, background: selected === p.pageId ? "#1877F215" : C.cardHover, cursor: "pointer", textAlign: "left", transition: "all 0.15s" }}>
                 <div style={{ width: 36, height: 36, borderRadius: 9, background: "#1877F215", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -140,7 +140,7 @@ function Ga4PropertySelectorModal({ clientId, onClose, onSaved }) {
         )}
 
         {!loading && properties && properties.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 320, overflowY: "auto", paddingRight: 4 }}>
             {properties.map((p) => (
               <button key={p.propertyId} onClick={() => setSelected(p.propertyId)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 10, border: `2px solid ${selected === p.propertyId ? "#4285F4" : C.border}`, background: selected === p.propertyId ? "#4285F415" : C.cardHover, cursor: "pointer", textAlign: "left", transition: "all 0.15s" }}>
                 <div style={{ width: 36, height: 36, borderRadius: 9, background: "#4285F415", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
@@ -220,7 +220,7 @@ function LinkedinOrgSelectorModal({ clientId, onClose, onSaved }) {
         )}
 
         {!loading && orgs && orgs.length > 0 && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, maxHeight: 320, overflowY: "auto", paddingRight: 4 }}>
             {orgs.map((o) => (
               <button key={o.organizationUrn} onClick={() => setSelected(o.organizationUrn)} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderRadius: 10, border: `2px solid ${selected === o.organizationUrn ? "#0A66C2" : C.border}`, background: selected === o.organizationUrn ? "#0A66C215" : C.cardHover, cursor: "pointer", textAlign: "left", transition: "all 0.15s" }}>
                 <div style={{ width: 36, height: 36, borderRadius: 9, background: "#0A66C215", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
