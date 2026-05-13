@@ -5,7 +5,7 @@ import { C } from "../utils/colors";
 import { useAuth } from "../contexts/AuthContext";
 
 const NAV = [
-  { to: "/clients", icon: Users,           label: "Clientes"  },
+  { to: "/clients", icon: Users, label: "Clientes" },
 ];
 
 export default function AgencyLayout({ children }) {
@@ -25,7 +25,7 @@ export default function AgencyLayout({ children }) {
             </div>
             <div>
               <div style={{ fontSize: 14, fontWeight: 900, color: C.text, lineHeight: 1.1, letterSpacing: "-0.02em" }}>CRT Ecosystem</div>
-              <div style={{ fontSize: 10, color: C.textMuted, marginTop: 1 }}>Gestão de Mídias Sociais</div>
+              <div style={{ fontSize: 10, color: C.textMuted, marginTop: 1 }}>Gestão de Mídias Sociaisxxxx</div>
             </div>
           </div>
         </div>
@@ -37,8 +37,8 @@ export default function AgencyLayout({ children }) {
               display: "flex", alignItems: "center", gap: 9, padding: "9px 12px",
               borderRadius: 9, textDecoration: "none", fontSize: 13, fontWeight: 600,
               background: isActive ? C.primary + "22" : "transparent",
-              color:      isActive ? C.primaryLight   : C.textMuted,
-              outline:    isActive ? `1px solid ${C.primary}40` : "none",
+              color: isActive ? C.primaryLight : C.textMuted,
+              outline: isActive ? `1px solid ${C.primary}40` : "none",
             })}>
               <Icon size={15} />{label}
             </NavLink>
