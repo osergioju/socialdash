@@ -14,7 +14,7 @@ async function getInstagramMetrics(clientId) {
 
   const themes = await prisma.theme.findMany({
     where: { clientId, platform: "INSTAGRAM" },
-    orderBy: { curtidas: "desc" },
+    orderBy: { metrics: { _sum: { curtidas: "desc" } } },
   });
 
   return { metrics, cities, themes };
@@ -34,7 +34,7 @@ async function getLinkedinMetrics(clientId) {
 
   const themes = await prisma.theme.findMany({
     where: { clientId, platform: "LINKEDIN" },
-    orderBy: { engajamento: "desc" },
+    orderBy: { metrics: { _sum: { engajamento: "desc" } } },
   });
 
   const industries = await prisma.linkedinIndustry.findMany({
