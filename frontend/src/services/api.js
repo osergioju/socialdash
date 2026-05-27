@@ -1,32 +1,48 @@
 import axios from "axios";
 
-const api = axios.create({
-  baseURL: "/api"
-});
+// ─── Agency + client-view shared API instance ─────────────────────────────────
+// Uses agency token when present; falls back to client token for /c/* routes.
+const api = axios.create({ baseURL: "/api" });
 
-// Inject auth token on every request
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token");
+  const token = localStorage.getItem("token") || localStorage.getItem("client_token");
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
-// Handle 401 globally
 api.interceptors.response.use(
   (res) => res,
   (err) => {
     if (err.response?.status === 401) {
-      localStorage.removeItem("token");
-      window.location.href = "/login";
+      if (localStorage.getItem("client_token")) {
+        // Client session expired
+        const slug = localStorage.getItem("client_slug") || "";
+        localStorage.removeItem("client_token");
+        localStorage.removeItem("client_slug");
+        window.location.href = `/c/${slug}/login`;
+      } else {
+        localStorage.removeItem("token");
+        window.location.href = "/login";
+      }
     }
     return Promise.reject(err);
   }
 );
 
+// ─── Dedicated client-auth API (always uses client_token, skips agency fallback)
+export const clientApi = axios.create({ baseURL: "/api" });
+
+clientApi.interceptors.request.use((config) => {
+  const token = localStorage.getItem("client_token");
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+
+// ─── Agency endpoints ─────────────────────────────────────────────────────────
 export const authApi = {
-  login: (data) => api.post("/auth/login", data).then((r) => r.data),
+  login:    (data) => api.post("/auth/login",    data).then((r) => r.data),
   register: (data) => api.post("/auth/register", data).then((r) => r.data),
-  me: () => api.get("/auth/me").then((r) => r.data),
+  me:       ()     => api.get("/auth/me").then((r) => r.data),
 };
 
 export const metricsApi = {
@@ -39,6 +55,12 @@ export const metricsApi = {
 export const syncApi = {
   trigger: (clientId) => api.post(`/sync/${clientId}`).then((r) => r.data),
   status:  (clientId) => api.get(`/sync/${clientId}/status`).then((r) => r.data),
+};
+
+// ─── Client-user auth endpoints ───────────────────────────────────────────────
+export const clientAuthApi = {
+  login: (data) => api.post("/client-auth/login", data).then((r) => r.data),
+  me:    ()     => clientApi.get("/client-auth/me").then((r) => r.data),
 };
 
 export default api;

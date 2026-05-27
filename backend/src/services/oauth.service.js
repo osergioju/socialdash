@@ -43,7 +43,10 @@ const PLATFORM_CONFIG = {
   LINKEDIN: {
     authUrl: "https://www.linkedin.com/oauth/v2/authorization",
     tokenUrl: "https://www.linkedin.com/oauth/v2/accessToken",
-    scopes: "r_organization_social rw_organization_admin r_basicprofile r_emailaddress",
+    // openid+profile+email: disponíveis sem aprovação especial (OpenID Connect)
+    // r_organization_social+rw_organization_admin: requerem Marketing Developer Platform (MDP)
+    // Solicitar todos juntos — LinkedIn retorna os aprovados; sem MDP os de org serão negados
+    scopes: "openid profile email r_organization_social rw_organization_admin",
     clientId: () => process.env.LINKEDIN_CLIENT_ID,
     secret: () => process.env.LINKEDIN_CLIENT_SECRET,
     redirectPath: "/oauth/linkedin/callback",
@@ -51,7 +54,9 @@ const PLATFORM_CONFIG = {
 };
 
 function callbackUrl(platform) {
-  const base = process.env.BACKEND_URL || `http://comunity.crtcomunicacao.com.br/api`;
+  const raw = (process.env.BACKEND_URL || "http://localhost:3001").replace(/\/$/, "");
+  // Routes are mounted at /api/oauth — ensure /api is present
+  const base = raw.endsWith("/api") ? raw : `${raw}/api`;
   return base + PLATFORM_CONFIG[platform].redirectPath;
 }
 
@@ -146,12 +151,10 @@ async function fetchAccountInfo(platform, accessToken) {
       return { accountId: me.id, accountName: me.name, accountEmail: me.email };
     }
     if (platform === "LINKEDIN") {
-      const me = await httpGet("https://api.linkedin.com/v2/me?projection=(id,localizedFirstName,localizedLastName)", accessToken);
-      const name = `${me.localizedFirstName || ""} ${me.localizedLastName || ""}`.trim();
-      // email requires separate call
-      const emailRes = await httpGet("https://api.linkedin.com/v2/emailAddress?q=members&projection=(elements*(handle~))", accessToken).catch(() => null);
-      const email = emailRes?.elements?.[0]?.["handle~"]?.emailAddress;
-      return { accountId: me.id, accountName: name, accountEmail: email };
+      // Usa endpoint OpenID Connect (userinfo) — funciona com scopes openid+profile+email
+      const me = await httpGet("https://api.linkedin.com/v2/userinfo", accessToken).catch(() => ({}));
+      const name = me.name || `${me.given_name || ""} ${me.family_name || ""}`.trim();
+      return { accountId: me.sub, accountName: name || null, accountEmail: me.email || null };
     }
   } catch {
     return {};
@@ -189,11 +192,25 @@ async function handleCallback(platform, code, stateToken) {
     throw Object.assign(new Error(tokenRes.error_description || tokenRes.error), { status: 400 });
   }
 
-  const accessToken = tokenRes.access_token;
+  let accessToken = tokenRes.access_token;
   const refreshToken = tokenRes.refresh_token || null;
-  const expiresIn = tokenRes.expires_in; // seconds
+  let expiresIn = tokenRes.expires_in; // seconds
 
-  console.log("TOKENAX:", accessToken);
+  // 3a. For Meta: exchange short-lived token (1–2 h) for long-lived token (~60 days)
+  if (platform === "META") {
+    const llRes = await httpGet(
+      `https://graph.facebook.com/v19.0/oauth/access_token?grant_type=fb_exchange_token` +
+      `&client_id=${encodeURIComponent(cfg.clientId())}` +
+      `&client_secret=${encodeURIComponent(cfg.secret())}` +
+      `&fb_exchange_token=${encodeURIComponent(accessToken)}`,
+      accessToken
+    ).catch(() => null);
+    if (llRes?.access_token) {
+      accessToken = llRes.access_token;
+      expiresIn = llRes.expires_in ?? 5184000; // ~60 days fallback
+    }
+  }
+
   // 3. Fetch account info
   const info = await fetchAccountInfo(platform, accessToken);
 

@@ -8,6 +8,12 @@ export const clientApi = {
   remove: (id)         => api.delete(`/clients/${id}`),
 };
 
+export const clientUserApi = {
+  list:   (clientId)       => api.get("/client-auth/users", { params: { clientId } }).then(r => r.data),
+  create: (data)           => api.post("/client-auth/users", data).then(r => r.data),
+  remove: (userId)         => api.delete(`/client-auth/users/${userId}`).then(r => r.data),
+};
+
 export const oauthApi = {
   // Returns { url } — frontend opens url in current window
   getConnectUrl: (platform, clientId) =>

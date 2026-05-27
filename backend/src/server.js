@@ -9,6 +9,8 @@ const metricsRoutes = require("./routes/metrics.routes");
 const clientRoutes = require("./routes/client.routes");
 const oauthRoutes = require("./routes/oauth.routes");
 const syncRoutes = require("./routes/sync.routes");
+const clientAuthRoutes = require("./routes/client-auth.routes");
+const { startScheduler } = require("./services/scheduler.service");
 
 const app = express();
 
@@ -23,6 +25,8 @@ const allowedOrigins = [
   "http://localhost:5173",
   "http://comunity.crtcomunicacao.com.br",
   "https://comunity.crtcomunicacao.com.br",
+  "http://social.agenciacrt.com.br",
+  "https://social.agenciacrt.com.br",
 ];
 
 app.use(cors({
@@ -56,6 +60,7 @@ app.use("/api/metrics", metricsRoutes);
 app.use("/api/clients", clientRoutes);
 app.use("/api/oauth", oauthRoutes);
 app.use("/api/sync", syncRoutes);
+app.use("/api/client-auth", clientAuthRoutes);
 
 // ─── HEALTH CHECK ────────────────────────────────────────────────────────────
 app.get("/api/health", (_, res) =>
@@ -88,4 +93,5 @@ const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
   console.log(`🌍 Allowed origins:`, allowedOrigins);
-});  
+  startScheduler();
+});

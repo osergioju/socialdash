@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
-import { ArrowLeft, RefreshCw, CheckCircle2, AlertCircle, Clock, XCircle, Unlink, ExternalLink, Globe, StickyNote, BarChart3, Instagram, BarChart2, Building2 } from "lucide-react";
+import { ArrowLeft, RefreshCw, CheckCircle2, AlertCircle, Clock, XCircle, Unlink, ExternalLink, Globe, StickyNote, BarChart3, Instagram, BarChart2, Building2, Users, Plus, Trash2, Link2, Eye, EyeOff } from "lucide-react";
 import AgencyLayout from "../layouts/AgencyLayout";
 import { useClient } from "../hooks/useClients";
-import { oauthApi } from "../services/clientApi";
+import { oauthApi, clientUserApi } from "../services/clientApi";
 import { LoadingState, ErrorState } from "../components/ui/LoadingState";
 import { PLATFORM_META, STATUS_STYLE } from "../components/clients/PlatformBadge";
 import { C } from "../utils/colors";
@@ -484,6 +484,184 @@ function PlatformCard({ platform, connection, clientId, onUpdate, autoOpenSelect
   );
 }
 
+// ─── Seção de usuários do cliente ─────────────────────────────────────────────
+function ClientUsersSection({ clientId, clientSlug }) {
+  const [users, setUsers]       = useState([]);
+  const [loading, setLoading]   = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm]         = useState({ name: "", email: "", password: "" });
+  const [showPwd, setShowPwd]   = useState(false);
+  const [saving, setSaving]     = useState(false);
+  const [err, setErr]           = useState("");
+  const [copied, setCopied]     = useState(false);
+
+  const accessUrl = `${window.location.origin}/c/${clientSlug}`;
+
+  function load() {
+    setLoading(true);
+    clientUserApi.list(clientId)
+      .then(setUsers)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(() => { load(); }, [clientId]);
+
+  async function handleCreate(e) {
+    e.preventDefault();
+    setErr("");
+    setSaving(true);
+    try {
+      await clientUserApi.create({ clientId, ...form });
+      setForm({ name: "", email: "", password: "" });
+      setShowForm(false);
+      load();
+    } catch (ex) {
+      setErr(ex.response?.data?.error || "Erro ao criar usuário");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleDelete(userId, name) {
+    if (!confirm(`Remover acesso de "${name}"?`)) return;
+    try {
+      await clientUserApi.remove(userId);
+      load();
+    } catch {
+      alert("Erro ao remover usuário.");
+    }
+  }
+
+  function copyUrl() {
+    navigator.clipboard.writeText(accessUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  const inputStyle = {
+    width: "100%", padding: "9px 12px", borderRadius: 8,
+    border: `1px solid ${C.border}`, background: C.cardHover,
+    color: C.text, fontSize: 13, fontFamily: "inherit",
+    outline: "none", boxSizing: "border-box",
+  };
+
+  return (
+    <div style={{ marginTop: 36 }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+        <div>
+          <h2 style={{ margin: 0, fontSize: 17, fontWeight: 700, color: C.text, display: "flex", alignItems: "center", gap: 7 }}>
+            <Users size={17} color={C.primaryLight} /> Acessos do Cliente
+          </h2>
+          <p style={{ margin: "4px 0 0", fontSize: 12, color: C.textMuted }}>
+            Usuários que podem visualizar o dashboard em <strong style={{ color: C.primaryLight }}>/c/{clientSlug}</strong>
+          </p>
+        </div>
+        <button
+          onClick={() => { setShowForm(v => !v); setErr(""); }}
+          style={{ display: "flex", alignItems: "center", gap: 5, padding: "8px 14px", borderRadius: 9, border: "none", background: showForm ? C.border : `linear-gradient(135deg, ${C.primary}, ${C.primaryLight})`, color: showForm ? C.textMuted : "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit" }}
+        >
+          <Plus size={13} /> {showForm ? "Cancelar" : "Novo Acesso"}
+        </button>
+      </div>
+
+      {/* URL de acesso */}
+      <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "12px 16px", marginBottom: 14, display: "flex", alignItems: "center", gap: 10 }}>
+        <Link2 size={14} color={C.primaryLight} style={{ flexShrink: 0 }} />
+        <span style={{ flex: 1, fontSize: 12, color: C.textMuted, fontFamily: "monospace", wordBreak: "break-all" }}>{accessUrl}</span>
+        <button onClick={copyUrl} style={{ padding: "5px 12px", borderRadius: 7, border: `1px solid ${C.border}`, background: copied ? C.primary + "20" : "transparent", cursor: "pointer", color: copied ? C.primaryLight : C.textMuted, fontSize: 11, fontFamily: "inherit", fontWeight: 600, whiteSpace: "nowrap" }}>
+          {copied ? "Copiado!" : "Copiar"}
+        </button>
+      </div>
+
+      {/* Formulário de novo usuário */}
+      {showForm && (
+        <div style={{ background: C.card, border: `1px solid ${C.primary}40`, borderRadius: 14, padding: "20px 20px 16px", marginBottom: 14 }}>
+          <h4 style={{ margin: "0 0 14px", fontSize: 14, fontWeight: 700, color: C.text }}>Novo usuário de acesso</h4>
+          <form onSubmit={handleCreate} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 5 }}>Nome</label>
+                <input
+                  required style={inputStyle} placeholder="Ex: João Silva"
+                  value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 5 }}>E-mail</label>
+                <input
+                  type="email" required style={inputStyle} placeholder="joao@empresa.com"
+                  value={form.email} onChange={e => setForm({ ...form, email: e.target.value })}
+                />
+              </div>
+            </div>
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 600, color: C.textMuted, display: "block", marginBottom: 5 }}>Senha</label>
+              <div style={{ position: "relative" }}>
+                <input
+                  type={showPwd ? "text" : "password"} required minLength={6}
+                  style={{ ...inputStyle, paddingRight: 36 }} placeholder="Mínimo 6 caracteres"
+                  value={form.password} onChange={e => setForm({ ...form, password: e.target.value })}
+                />
+                <button type="button" onClick={() => setShowPwd(v => !v)}
+                  style={{ position: "absolute", right: 10, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", color: C.textMuted, display: "flex", padding: 2 }}>
+                  {showPwd ? <EyeOff size={14} /> : <Eye size={14} />}
+                </button>
+              </div>
+            </div>
+            {err && (
+              <p style={{ margin: 0, fontSize: 12, color: "#EF4444", padding: "7px 10px", background: "#EF444415", borderRadius: 7 }}>{err}</p>
+            )}
+            <div style={{ display: "flex", gap: 8, marginTop: 2 }}>
+              <button type="button" onClick={() => setShowForm(false)} style={{ flex: 1, padding: "9px", borderRadius: 8, border: `1px solid ${C.border}`, background: "transparent", cursor: "pointer", color: C.textMuted, fontSize: 12, fontFamily: "inherit" }}>
+                Cancelar
+              </button>
+              <button type="submit" disabled={saving} style={{ flex: 2, padding: "9px", borderRadius: 8, border: "none", background: saving ? C.border : `linear-gradient(135deg, ${C.primary}, ${C.primaryLight})`, color: saving ? C.textDim : "#fff", cursor: saving ? "not-allowed" : "pointer", fontSize: 12, fontWeight: 700, fontFamily: "inherit" }}>
+                {saving ? "Criando..." : "Criar Acesso"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* Lista de usuários */}
+      {loading ? (
+        <div style={{ fontSize: 13, color: C.textMuted, padding: "16px 0" }}>Carregando...</div>
+      ) : users.length === 0 ? (
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "20px 18px", display: "flex", alignItems: "center", gap: 12 }}>
+          <Users size={20} color={C.textDim} />
+          <div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: C.textMuted }}>Nenhum acesso criado ainda</div>
+            <div style={{ fontSize: 12, color: C.textDim, marginTop: 2 }}>Clique em "Novo Acesso" para criar o primeiro usuário do cliente.</div>
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {users.map(u => (
+            <div key={u.id} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "12px 16px", display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ width: 36, height: 36, borderRadius: 10, background: C.primary + "20", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 14, color: C.primaryLight, flexShrink: 0 }}>
+                {u.name[0].toUpperCase()}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: C.text }}>{u.name}</div>
+                <div style={{ fontSize: 11, color: C.textMuted, marginTop: 1 }}>{u.email}</div>
+              </div>
+              <div style={{ fontSize: 10, color: C.textDim, whiteSpace: "nowrap" }}>
+                desde {new Date(u.createdAt).toLocaleDateString("pt-BR")}
+              </div>
+              <button onClick={() => handleDelete(u.id, u.name)} title="Remover acesso"
+                style={{ padding: "6px 8px", borderRadius: 7, border: `1px solid ${C.border}`, background: "transparent", cursor: "pointer", color: "#EF4444", display: "flex", alignItems: "center" }}>
+                <Trash2 size={13} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function ClientDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -564,6 +742,8 @@ export default function ClientDetailPage() {
             />
           ))}
         </div>
+
+        <ClientUsersSection clientId={client.id} clientSlug={client.slug} />
       </div>
     </AgencyLayout>
   );

@@ -1,7 +1,30 @@
 const prisma = require("../config/prisma");
 
+// ─── In-memory TTL cache (5 min) ──────────────────────────────────────────────
+const CACHE_TTL = 5 * 60 * 1000;
+const cache = new Map(); // key → { data, expiresAt }
+
+function cacheGet(key) {
+  const entry = cache.get(key);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) { cache.delete(key); return null; }
+  return entry.data;
+}
+function cacheSet(key, data) {
+  cache.set(key, { data, expiresAt: Date.now() + CACHE_TTL });
+}
+function invalidateCache(clientId) {
+  for (const key of cache.keys()) {
+    if (key.includes(`:${clientId}`)) cache.delete(key);
+  }
+}
+
 // ─── Instagram ────────────────────────────────────────────────────────────────
 async function getInstagramMetrics(clientId) {
+  const key = `instagram:${clientId}`;
+  const cached = cacheGet(key);
+  if (cached) return cached;
+
   const metrics = await prisma.instagramMetric.findMany({
     where: { clientId },
     orderBy: { month: "asc" },
@@ -14,14 +37,21 @@ async function getInstagramMetrics(clientId) {
 
   const themes = await prisma.theme.findMany({
     where: { clientId, platform: "INSTAGRAM" },
-    orderBy: { metrics: { _sum: { curtidas: "desc" } } },
+    include: { metrics: { orderBy: { month: "desc" }, take: 1 } },
+    orderBy: { createdAt: "asc" },
   });
 
-  return { metrics, cities, themes };
+  const result = { metrics, cities, themes };
+  cacheSet(key, result);
+  return result;
 }
 
 // ─── LinkedIn ─────────────────────────────────────────────────────────────────
 async function getLinkedinMetrics(clientId) {
+  const key = `linkedin:${clientId}`;
+  const cached = cacheGet(key);
+  if (cached) return cached;
+
   const metrics = await prisma.linkedinMetric.findMany({
     where: { clientId },
     orderBy: { month: "asc" },
@@ -34,24 +64,40 @@ async function getLinkedinMetrics(clientId) {
 
   const themes = await prisma.theme.findMany({
     where: { clientId, platform: "LINKEDIN" },
-    orderBy: { metrics: { _sum: { engajamento: "desc" } } },
+    include: { metrics: { orderBy: { month: "desc" }, take: 1 } },
+    orderBy: { createdAt: "asc" },
   });
 
-  const industries = await prisma.linkedinIndustry.findMany({
+  // Industries: fetch with most-recent metric, flatten for API response
+  const rawIndustries = await prisma.linkedinIndustry.findMany({
     where: { clientId },
-    orderBy: { seguidores: "desc" },
+    include: { metrics: { orderBy: { month: "desc" }, take: 1 } },
   });
 
-  const roles = await prisma.linkedinRole.findMany({
+  const rawRoles = await prisma.linkedinRole.findMany({
     where: { clientId },
-    orderBy: { seguidores: "desc" },
+    include: { metrics: { orderBy: { month: "desc" }, take: 1 } },
   });
 
-  return { metrics, cities, themes, industries, roles };
+  const industries = rawIndustries
+    .map((ind) => ({ id: ind.id, nome: ind.nome, seguidores: ind.metrics[0]?.seguidores ?? 0 }))
+    .sort((a, b) => b.seguidores - a.seguidores);
+
+  const roles = rawRoles
+    .map((role) => ({ id: role.id, nome: role.nome, seguidores: role.metrics[0]?.seguidores ?? 0 }))
+    .sort((a, b) => b.seguidores - a.seguidores);
+
+  const result = { metrics, cities, themes, industries, roles };
+  cacheSet(key, result);
+  return result;
 }
 
 // ─── GA4 ──────────────────────────────────────────────────────────────────────
 async function getGa4Metrics(clientId) {
+  const key = `ga4:${clientId}`;
+  const cached = cacheGet(key);
+  if (cached) return cached;
+
   const metrics = await prisma.ga4Metric.findMany({
     where: { clientId },
     orderBy: { month: "asc" },
@@ -67,60 +113,63 @@ async function getGa4Metrics(clientId) {
     include: { metrics: { orderBy: { month: "asc" } } },
   });
 
-  return { metrics, pages, origins };
+  const result = { metrics, pages, origins };
+  cacheSet(key, result);
+  return result;
 }
 
 // ─── Overview ─────────────────────────────────────────────────────────────────
-// IG now stores period keys (last_15d … last_90d) — use last_30d as canonical for overview
-const IG_30D = "last_30d";
-
 async function getOverview(clientId) {
-  const [ig30, liFirst, liLast, ga4Last] = await Promise.all([
-    prisma.instagramMetric.findUnique({ where: { clientId_month: { clientId, month: IG_30D } } }),
+  const key = `overview:${clientId}`;
+  const cached = cacheGet(key);
+  if (cached) return cached;
+  const [igLast, liFirst, liLast, ga4Last] = await Promise.all([
+    prisma.instagramMetric.findFirst({ where: { clientId }, orderBy: { month: "desc" } }),
     prisma.linkedinMetric.findFirst({ where: { clientId }, orderBy: { month: "asc" } }),
     prisma.linkedinMetric.findFirst({ where: { clientId }, orderBy: { month: "desc" } }),
     prisma.ga4Metric.findFirst({ where: { clientId }, orderBy: { month: "desc" } }),
   ]);
 
-  // IG timeseries: all 4 period records ordered by days ascending
-  const igAll = await prisma.instagramMetric.findMany({
-    where: { clientId, month: { in: ["last_15d", "last_30d", "last_60d", "last_90d"] } },
-    orderBy: { month: "asc" },
-  });
+  const [igAll, liAll, ga4All] = await Promise.all([
+    prisma.instagramMetric.findMany({ where: { clientId }, orderBy: { month: "asc" } }),
+    prisma.linkedinMetric.findMany({ where: { clientId }, orderBy: { month: "asc" } }),
+    prisma.ga4Metric.findMany({ where: { clientId }, orderBy: { month: "asc" } }),
+  ]);
 
-  const liAll  = await prisma.linkedinMetric.findMany({ where: { clientId }, orderBy: { month: "asc" } });
-  const ga4All = await prisma.ga4Metric.findMany({ where: { clientId }, orderBy: { month: "asc" } });
+  const igFirst = igAll[0] ?? null;
 
-  return {
+  const overview = {
     kpis: {
-      igSeguidores:  { value: ig30?.seguidores,       growth: null },
+      igSeguidores:  { value: igLast?.seguidores,      growth: pctGrowth(igFirst?.seguidores, igLast?.seguidores) },
       liSeguidores:  { value: liLast?.seguidores,      growth: pctGrowth(liFirst?.seguidores, liLast?.seguidores) },
-      totalViewsIG:  { value: ig30?.visualizacoes,     variation: null },
-      usuariosSite:  { value: ga4Last?.usuariosAtivos,  variation: varLast(ga4All.map(m => m.usuariosAtivos)) },
-      alcanceIG:     { value: ig30?.alcanceOrganico,   variation: null },
-      engajamentoLI: { value: liLast?.engajamento,      variation: varLast(liAll.map(m => m.engajamento)) },
+      totalViewsIG:  { value: igLast?.visualizacoes,   variation: varLast(igAll.map((m) => m.visualizacoes)) },
+      usuariosSite:  { value: ga4Last?.usuariosAtivos, variation: varLast(ga4All.map((m) => m.usuariosAtivos)) },
+      alcanceIG:     { value: igLast?.alcanceOrganico, variation: varLast(igAll.map((m) => m.alcanceOrganico)) },
+      engajamentoLI: { value: liLast?.engajamento,     variation: varLast(liAll.map((m) => m.engajamento)) },
     },
     timeseries: {
-      instagram: igAll.map(m => ({ mes: m.monthLabel, monthKey: m.month, igSeg: m.seguidores, igAlc: m.alcanceOrganico })),
-      linkedin:  liAll.map(m => ({ mes: m.monthLabel.split("/")[0], monthKey: m.month, liSeg: m.seguidores, liAlc: m.alcance })),
-      ga4:       ga4All.map(m => ({ mes: m.monthLabel.split("/")[0], monthKey: m.month, usuarios: m.usuariosAtivos, sessoes: m.sessoes })),
+      instagram: igAll.map((m) => ({ mes: m.monthLabel, monthKey: m.month, igSeg: m.seguidores, igAlc: m.alcanceOrganico })),
+      linkedin:  liAll.map((m) => ({ mes: m.monthLabel.split("/")[0], monthKey: m.month, liSeg: m.seguidores, liAlc: m.alcance })),
+      ga4:       ga4All.map((m) => ({ mes: m.monthLabel.split("/")[0], monthKey: m.month, usuarios: m.usuariosAtivos, sessoes: m.sessoes })),
     },
     growth: {
-      igTotal: ig30?.novosSeguidores ?? null,
-      igPct:   null,
+      igTotal: igLast?.novosSeguidores ?? null,
+      igPct:   pctGrowth(igAll[igAll.length - 2]?.seguidores, igLast?.seguidores),
       liTotal: liLast && liFirst ? liLast.seguidores - liFirst.seguidores : null,
       liPct:   pctGrowth(liFirst?.seguidores, liLast?.seguidores),
     },
   };
+  cacheSet(key, overview);
+  return overview;
 }
 
 function pctGrowth(first, last) {
-  if (!first || !last) return null;
+  if (first == null || last == null || first === 0) return null;
   return +(((last - first) / first) * 100).toFixed(1);
 }
 
 function varLast(arr) {
-  const clean = arr.filter(v => v != null);
+  const clean = arr.filter((v) => v != null);
   if (clean.length < 2) return null;
   const prev = clean[clean.length - 2];
   const curr = clean[clean.length - 1];
@@ -128,4 +177,4 @@ function varLast(arr) {
   return +(((curr - prev) / prev) * 100).toFixed(1);
 }
 
-module.exports = { getInstagramMetrics, getLinkedinMetrics, getGa4Metrics, getOverview };
+module.exports = { getInstagramMetrics, getLinkedinMetrics, getGa4Metrics, getOverview, invalidateCache };

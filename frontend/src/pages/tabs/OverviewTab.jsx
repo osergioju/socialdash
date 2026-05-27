@@ -19,7 +19,7 @@ export default function OverviewTab() {
 
   const { kpis, timeseries, growth } = data;
 
-  // IG uses period buckets (15/30/60/90 dias); LI/GA4 use monthly records
+  // Todos os canais usam registros mensais (YYYY-MM)
   const igData  = timeseries.instagram; // [{mes, igSeg, igAlc}, ...]
   const liLen   = timeseries.linkedin.length;
   const ga4Len  = timeseries.ga4.length;
@@ -43,15 +43,15 @@ export default function OverviewTab() {
         <MetricCard title="Engaj. LI"      value={fmt(kpis.engajamentoLI.value)} variation={kpis.engajamentoLI.variation} icon={Heart} color={C.orange} />
       </div>
 
-      {/* Instagram: alcance por período (15/30/60/90 dias) */}
+      {/* Instagram: alcance mensal */}
       {igData.length > 0 && (
         <>
-          <SectionHeader icon={Users} title="Instagram — Alcance por Período" subtitle="Acumulado nos últimos 15 / 30 / 60 / 90 dias" color={C.instagram} />
+          <SectionHeader icon={Users} title="Instagram — Alcance Mensal" subtitle="Evolução histórica mês a mês" color={C.instagram} />
           <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "22px 18px", marginBottom: 12 }}>
             {growth?.igTotal != null && (
               <div style={{ marginBottom: 12, paddingLeft: 8 }}>
-                <span style={{ fontSize: 11, color: C.textMuted }}>Novos seguidores (30 dias): </span>
-                <span style={{ fontSize: 14, fontWeight: 700, color: C.instagram }}>+{growth.igTotal}</span>
+                <span style={{ fontSize: 11, color: C.textMuted }}>Novos seguidores (mês mais recente): </span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: C.instagram }}>+{growth.igTotal.toLocaleString("pt-BR")}</span>
               </div>
             )}
             <ResponsiveContainer width="100%" height={220}>

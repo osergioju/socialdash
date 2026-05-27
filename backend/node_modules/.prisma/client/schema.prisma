@@ -38,6 +38,7 @@ model Client {
   createdById        String
   createdBy          User                 @relation(fields: [createdById], references: [id])
   connections        PlatformConnection[]
+  clientUsers        ClientUser[]
   instagramMetrics   InstagramMetric[]
   linkedinMetrics    LinkedinMetric[]
   ga4Metrics         Ga4Metric[]
@@ -50,6 +51,7 @@ model Client {
   createdAt          DateTime             @default(now())
   updatedAt          DateTime             @updatedAt
 
+  @@index([createdById])
   @@map("clients")
 }
 
@@ -72,7 +74,24 @@ model PlatformConnection {
   updatedAt    DateTime         @updatedAt
 
   @@unique([clientId, platform])
+  @@index([status])
   @@map("platform_connections")
+}
+
+// ─── Client-facing logins ─────────────────────────────────────────────────────
+
+model ClientUser {
+  id        String   @id @default(cuid())
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name      String
+  email     String
+  password  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([clientId, email])
+  @@map("client_users")
 }
 
 enum OAuthPlatform {

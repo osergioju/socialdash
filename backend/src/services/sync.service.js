@@ -22,8 +22,6 @@ function httpGet(url, token) {
       path: parsed.pathname + parsed.search,
       headers: { Authorization: `Bearer ${token}` },
     };
-    console.log("TOKEN:X ", token);
-
     https.get(opts, (res) => {
       let raw = "";
       res.on("data", (c) => { raw += c; });
@@ -203,8 +201,8 @@ async function fetchMediaInsightsBatch(pageToken, posts) {
         // STORY v22.0: sem impressions, sem saved
         metrics = "exits,reach,taps_forward,taps_back";
       } else {
-        // IMAGE, CAROUSEL_ALBUM, VIDEO feed v22.0: só reach é garantido universal
-        metrics = "reach";
+        // IMAGE, CAROUSEL_ALBUM v22.0: reach + saved + shares disponíveis
+        metrics = "reach,saved,shares";
       }
       return { relative_url: `${p.id}/insights?metric=${metrics}` };
     });
@@ -388,6 +386,7 @@ async function syncMeta(clientId, conn) {
     // Agrega posts deste mês
     let feedCount = 0, reelsCount = 0, likes = 0, comments = 0;
     let reelsReach = 0, reelsInteractions = 0;
+    let savedPosts = 0, sharesPosts = 0;
 
     for (const p of filteredPosts) {
       const ts = new Date(p.timestamp);
@@ -403,6 +402,8 @@ async function syncMeta(clientId, conn) {
         reelsInteractions += ins.total_interactions ?? (pLikes + pComments);
       } else if (p.media_type === "IMAGE" || p.media_type === "CAROUSEL_ALBUM") {
         feedCount++;
+        savedPosts  += ins.saved  ?? 0;
+        sharesPosts += ins.shares ?? 0;
       }
     }
 
@@ -446,8 +447,8 @@ async function syncMeta(clientId, conn) {
       storiesViews,
       curtidasPosts: likes,
       comentariosPosts: comments,
-      salvamentosPosts: 0,
-      compartilhamentosPosts: 0,
+      salvamentosPosts: savedPosts,
+      compartilhamentosPosts: sharesPosts,
     };
 
     if (existing) {
@@ -520,77 +521,127 @@ async function syncLinkedin(clientId, conn) {
 
   const orgUrn = encodeURIComponent(meta.organizationUrn);
   const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth() + 1;
-  const mk = monthKey(year, month);
-  const ml = monthLabel(year, month);
+  const LI_MONTHS_BACK = 12;
 
+  // ── Follower stats: apenas snapshot atual (API não suporta range histórico) ─
   const followerRes = await httpGet(
     `https://api.linkedin.com/v2/organizationalEntityFollowerStatistics?q=organizationalEntity&organizationalEntity=${orgUrn}`,
     token
   ).catch(() => ({}));
   const followerStats = followerRes.elements?.[0] || {};
-  const seguidores = followerStats.totalFollowerCount || 0;
-  const novosSeguidores = followerStats.followerGains?.organicFollowerGain || 0;
-  console.log(`[sync/linkedin] seguidores=${seguidores} novos=${novosSeguidores}`);
+  const currentSeguidores = followerStats.totalFollowerCount || 0;
+  const currentNovos      = followerStats.followerGains?.organicFollowerGain || 0;
 
-  const startMs = new Date(year, month - 1, 1).getTime();
-  const endMs = new Date(year, month, 1).getTime() - 1;
+  // ── Page stats: 12 meses em UMA chamada com MONTH granularity ────────────
+  const rangeStart = new Date(now.getFullYear(), now.getMonth() - LI_MONTHS_BACK + 1, 1).getTime();
+  const rangeEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
+
   const pageStatsRes = await httpGet(
-    `https://api.linkedin.com/v2/organizationPageStatistics?q=organizationalEntity&organizationalEntity=${orgUrn}&timeIntervals.timeGranularityType=MONTH&timeIntervals.timeRange.start=${startMs}&timeIntervals.timeRange.end=${endMs}`,
+    `https://api.linkedin.com/v2/organizationPageStatistics?q=organizationalEntity&organizationalEntity=${orgUrn}` +
+    `&timeIntervals.timeGranularityType=MONTH&timeIntervals.timeRange.start=${rangeStart}&timeIntervals.timeRange.end=${rangeEnd}`,
     token
   ).catch(() => ({}));
-  const pageEl = pageStatsRes.elements?.[0]?.totalPageStatistics || {};
-  const impressoes = pageEl.views?.allPageViews?.pageViews || 0;
-  const alcance = impressoes;
 
+  // ── Share stats: 12 meses em UMA chamada ─────────────────────────────────
   const shareStatsRes = await httpGet(
-    `https://api.linkedin.com/v2/organizationalEntityShareStatistics?q=organizationalEntity&organizationalEntity=${orgUrn}&timeIntervals.timeGranularityType=MONTH&timeIntervals.timeRange.start=${startMs}&timeIntervals.timeRange.end=${endMs}`,
+    `https://api.linkedin.com/v2/organizationalEntityShareStatistics?q=organizationalEntity&organizationalEntity=${orgUrn}` +
+    `&timeIntervals.timeGranularityType=MONTH&timeIntervals.timeRange.start=${rangeStart}&timeIntervals.timeRange.end=${rangeEnd}`,
     token
   ).catch(() => ({}));
-  const shareEl = shareStatsRes.elements?.[0]?.totalShareStatistics || {};
-  const engajamento = shareEl.totalEngagement || 0;
-  const cliques = shareEl.clickCount || 0;
-  const reacoes = shareEl.likeCount || 0;
-  const postagens = shareEl.shareCount || 0;
 
-  const liData = { monthLabel: ml, seguidores, novosSeguidores, alcance, impressoes, engajamento, cliques, reacoes, postagens };
-  const existingLi = await prisma.linkedinMetric.findUnique({ where: { clientId_month: { clientId, month: mk } } });
-  if (existingLi) await prisma.linkedinMetric.update({ where: { id: existingLi.id }, data: liData });
-  else await prisma.linkedinMetric.create({ data: { clientId, month: mk, ...liData } });
+  // Monta lookups por monthKey para acesso O(1)
+  const pageByMonth  = {};
+  for (const el of (pageStatsRes.elements || [])) {
+    const ts = el.timeRange?.start;
+    if (!ts) continue;
+    const d  = new Date(parseInt(ts));
+    pageByMonth[monthKey(d.getFullYear(), d.getMonth() + 1)] = el.totalPageStatistics || {};
+  }
 
-  if (followerStats.followerCountsByGeo) {
-    for (const geo of followerStats.followerCountsByGeo.slice(0, 10)) {
-      const cityName = geo.geo?.name || geo.geoCountryName || "Desconhecido";
-      const count = geo.followerCounts?.organicFollowerCount || 0;
-      let city = await prisma.city.findUnique({ where: { clientId_name_platform: { clientId, name: cityName, platform: "LINKEDIN" } } });
-      if (!city) city = await prisma.city.create({ data: { clientId, name: cityName, platform: "LINKEDIN" } });
-      const existingLiCm = await prisma.cityMetric.findUnique({ where: { cityId_month: { cityId: city.id, month: mk } } });
-      if (existingLiCm) await prisma.cityMetric.update({ where: { id: existingLiCm.id }, data: { seguidores: count } });
-      else await prisma.cityMetric.create({ data: { cityId: city.id, month: mk, seguidores: count } });
-    }
+  const shareByMonth = {};
+  for (const el of (shareStatsRes.elements || [])) {
+    const ts = el.timeRange?.start;
+    if (!ts) continue;
+    const d  = new Date(parseInt(ts));
+    shareByMonth[monthKey(d.getFullYear(), d.getMonth() + 1)] = el.totalShareStatistics || {};
+  }
+
+  // ── Persiste cada mês (do mais recente para o mais antigo) ───────────────
+  let previousFollowers = currentSeguidores;
+
+  for (let i = 0; i < LI_MONTHS_BACK; i++) {
+    const d     = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const yr    = d.getFullYear();
+    const mo    = d.getMonth() + 1;
+    const mk    = monthKey(yr, mo);
+    const ml    = monthLabel(yr, mo);
+    const isCurrent = i === 0;
+
+    const pageEl  = pageByMonth[mk]  || {};
+    const shareEl = shareByMonth[mk] || {};
+
+    const impressoes  = pageEl.views?.allPageViews?.pageViews     || 0;
+    const alcance     = pageEl.views?.allPageViews?.uniquePageViews || 0;
+    const engajamento = shareEl.totalEngagement || 0;
+    const cliques     = shareEl.clickCount      || 0;
+    const reacoes     = shareEl.likeCount       || 0;
+    const postagens   = shareEl.shareCount      || 0;
+
+    const seguidores     = previousFollowers;
+    const novosSeguidores = isCurrent ? currentNovos : 0;
+    previousFollowers    = Math.max(0, previousFollowers - novosSeguidores);
+
+    const liData = { monthLabel: ml, seguidores, novosSeguidores, alcance, impressoes, engajamento, cliques, reacoes, postagens };
+    const existingLi = await prisma.linkedinMetric.findUnique({ where: { clientId_month: { clientId, month: mk } } });
+    if (existingLi) await prisma.linkedinMetric.update({ where: { id: existingLi.id }, data: liData });
+    else            await prisma.linkedinMetric.create({ data: { clientId, month: mk, ...liData } });
+  }
+
+  // ── Geo, indústrias e funções (snapshot do mês atual apenas) ─────────────
+  const currentMk = monthKey(now.getFullYear(), now.getMonth() + 1);
+
+  const geoList = followerStats.followerCountsByRegion || followerStats.followerCountsByCountry || [];
+  for (const geo of geoList.slice(0, 10)) {
+    const geoUrn   = geo.geo || "";
+    const cityName = geo.geoCountryName || (geoUrn ? `Região ${geoUrn.split(":").pop()}` : "Desconhecido");
+    const count    = geo.followerCounts?.organicFollowerCount || 0;
+    if (!count) continue;
+    let city = await prisma.city.findUnique({ where: { clientId_name_platform: { clientId, name: cityName, platform: "LINKEDIN" } } });
+    if (!city) city = await prisma.city.create({ data: { clientId, name: cityName, platform: "LINKEDIN" } });
+    const existingCm = await prisma.cityMetric.findUnique({ where: { cityId_month: { cityId: city.id, month: currentMk } } });
+    if (existingCm) await prisma.cityMetric.update({ where: { id: existingCm.id }, data: { seguidores: count } });
+    else            await prisma.cityMetric.create({ data: { cityId: city.id, month: currentMk, seguidores: count } });
   }
 
   if (followerStats.followerCountsByIndustry) {
     for (const ind of followerStats.followerCountsByIndustry.slice(0, 10)) {
-      const nome = ind.industry?.name || `Indústria ${ind.industry?.id}`;
-      const seg = ind.followerCounts?.organicFollowerCount || 0;
-      const existingInd = await prisma.linkedinIndustry.findUnique({ where: { clientId_nome: { clientId, nome } } });
-      if (existingInd) await prisma.linkedinIndustry.update({ where: { id: existingInd.id }, data: { seguidores: seg } });
-      else await prisma.linkedinIndustry.create({ data: { clientId, nome, seguidores: seg } });
-    }
-  }
-  if (followerStats.followerCountsByFunction) {
-    for (const fn of followerStats.followerCountsByFunction.slice(0, 10)) {
-      const nome = fn.function?.name || `Função ${fn.function?.id}`;
-      const seg = fn.followerCounts?.organicFollowerCount || 0;
-      const existingRole = await prisma.linkedinRole.findUnique({ where: { clientId_nome: { clientId, nome } } });
-      if (existingRole) await prisma.linkedinRole.update({ where: { id: existingRole.id }, data: { seguidores: seg } });
-      else await prisma.linkedinRole.create({ data: { clientId, nome, seguidores: seg } });
+      const indUrn = typeof ind.industry === "string" ? ind.industry : "";
+      const nome   = ind.industryName || (indUrn ? `Indústria ${indUrn.split(":").pop()}` : "Indústria desconhecida");
+      const seg    = ind.followerCounts?.organicFollowerCount || 0;
+      if (!seg) continue;
+      let industry = await prisma.linkedinIndustry.findUnique({ where: { clientId_nome: { clientId, nome } } });
+      if (!industry) industry = await prisma.linkedinIndustry.create({ data: { clientId, nome } });
+      const existingMet = await prisma.linkedinIndustryMetric.findUnique({ where: { industryId_month: { industryId: industry.id, month: currentMk } } });
+      if (existingMet) await prisma.linkedinIndustryMetric.update({ where: { id: existingMet.id }, data: { seguidores: seg } });
+      else             await prisma.linkedinIndustryMetric.create({ data: { industryId: industry.id, month: currentMk, seguidores: seg } });
     }
   }
 
-  return { ok: true, month: mk };
+  if (followerStats.followerCountsByFunction) {
+    for (const fn of followerStats.followerCountsByFunction.slice(0, 10)) {
+      const fnUrn = typeof fn.function === "string" ? fn.function : "";
+      const nome  = fn.functionName || (fnUrn ? `Função ${fnUrn.split(":").pop()}` : "Função desconhecida");
+      const seg   = fn.followerCounts?.organicFollowerCount || 0;
+      if (!seg) continue;
+      let role = await prisma.linkedinRole.findUnique({ where: { clientId_nome: { clientId, nome } } });
+      if (!role) role = await prisma.linkedinRole.create({ data: { clientId, nome } });
+      const existingMet = await prisma.linkedinRoleMetric.findUnique({ where: { roleId_month: { roleId: role.id, month: currentMk } } });
+      if (existingMet) await prisma.linkedinRoleMetric.update({ where: { id: existingMet.id }, data: { seguidores: seg } });
+      else             await prisma.linkedinRoleMetric.create({ data: { roleId: role.id, month: currentMk, seguidores: seg } });
+    }
+  }
+
+  return { ok: true, months: LI_MONTHS_BACK, month: currentMk };
 }
 
 // ─── GOOGLE ANALYTICS 4 ───────────────────────────────────────────────────────
@@ -625,21 +676,15 @@ async function syncGa4(clientId, conn) {
   }
 
   const propertyId = meta.propertyId;
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth() + 1;
-  const mk = monthKey(year, month);
-  const ml = monthLabel(year, month);
 
-  const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
-  const lastDay = new Date(year, month, 0).getDate();
-  const endDate = `${year}-${String(month).padStart(2, "0")}-${lastDay}`;
+  // ── 3 API calls — all covering 365 days via yearMonth dimension ──────────
 
   const mainReport = await httpPost(
     `https://analyticsdata.googleapis.com/v1beta/${propertyId}:runReport`,
     token,
     {
-      dateRanges: [{ startDate, endDate }],
+      dateRanges: [{ startDate: "365daysAgo", endDate: "today" }],
+      dimensions: [{ name: "yearMonth" }],
       metrics: [
         { name: "activeUsers" },
         { name: "newUsers" },
@@ -651,83 +696,125 @@ async function syncGa4(clientId, conn) {
         { name: "screenPageViewsPerSession" },
         { name: "eventCount" },
       ],
+      orderBys: [{ dimension: { dimensionName: "yearMonth" }, desc: false }],
     }
   );
-
-  const row = mainReport.rows?.[0]?.metricValues || [];
-  const get = (i) => parseFloat(row[i]?.value || "0");
-
-  const usuariosAtivos = Math.round(get(0));
-  const novosUsuarios = Math.round(get(1));
-  const usuariosTotais = Math.round(get(2));
-  const sessoes = Math.round(get(3));
-  const sessoesEngajadas = Math.round(get(4));
-  const taxaEngajamento = parseFloat((get(5) * 100).toFixed(2));
-  const tempoMedioEngajamento = Math.round(get(6) / Math.max(usuariosAtivos, 1));
-  const viewsPorSessao = parseFloat(get(7).toFixed(2));
-  const numEventos = Math.round(get(8));
-
-  const ga4Data = { monthLabel: ml, usuariosAtivos, novosUsuarios, usuariosTotais, sessoes, sessoesEngajadas, taxaEngajamento, tempoMedioEngajamento, viewsPorSessao, numEventos };
-  const existingGa4 = await prisma.ga4Metric.findUnique({ where: { clientId_month: { clientId, month: mk } } });
-  if (existingGa4) await prisma.ga4Metric.update({ where: { id: existingGa4.id }, data: ga4Data });
-  else await prisma.ga4Metric.create({ data: { clientId, month: mk, ...ga4Data } });
 
   const pagesReport = await httpPost(
     `https://analyticsdata.googleapis.com/v1beta/${propertyId}:runReport`,
     token,
     {
-      dateRanges: [{ startDate, endDate }],
-      dimensions: [{ name: "pagePath" }],
+      dateRanges: [{ startDate: "365daysAgo", endDate: "today" }],
+      dimensions: [{ name: "yearMonth" }, { name: "pagePath" }],
       metrics: [{ name: "screenPageViews" }, { name: "userEngagementDuration" }],
-      orderBys: [{ metric: { metricName: "screenPageViews" }, desc: true }],
-      limit: 10,
+      orderBys: [
+        { dimension: { dimensionName: "yearMonth" }, desc: false },
+        { metric: { metricName: "screenPageViews" }, desc: true },
+      ],
+      limit: 120,
     }
   );
-
-  for (const row of pagesReport.rows || []) {
-    const pagina = row.dimensionValues?.[0]?.value || "/";
-    const views = Math.round(parseFloat(row.metricValues?.[0]?.value || "0"));
-    const tempo = Math.round(parseFloat(row.metricValues?.[1]?.value || "0") / Math.max(views, 1));
-    const label = pagina === "/" ? "Home" : pagina.replace(/^\/|\/$/g, "").split("/").pop() || pagina;
-    let page = await prisma.ga4Page.findUnique({ where: { clientId_pagina: { clientId, pagina } } });
-    if (page) await prisma.ga4Page.update({ where: { id: page.id }, data: { label } });
-    else page = await prisma.ga4Page.create({ data: { clientId, pagina, label } });
-    const existingPm = await prisma.ga4PageMetric.findUnique({ where: { pageId_month: { pageId: page.id, month: mk } } });
-    if (existingPm) await prisma.ga4PageMetric.update({ where: { id: existingPm.id }, data: { views, tempoMedio: tempo } });
-    else await prisma.ga4PageMetric.create({ data: { pageId: page.id, month: mk, views, tempoMedio: tempo } });
-  }
 
   const originsReport = await httpPost(
     `https://analyticsdata.googleapis.com/v1beta/${propertyId}:runReport`,
     token,
     {
-      dateRanges: [{ startDate, endDate }],
-      dimensions: [{ name: "sessionSource" }],
+      dateRanges: [{ startDate: "365daysAgo", endDate: "today" }],
+      dimensions: [{ name: "yearMonth" }, { name: "sessionSource" }],
       metrics: [
         { name: "sessions" },
         { name: "engagementRate" },
         { name: "userEngagementDuration" },
         { name: "activeUsers" },
       ],
-      orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
-      limit: 10,
+      orderBys: [
+        { dimension: { dimensionName: "yearMonth" }, desc: false },
+        { metric: { metricName: "sessions" }, desc: true },
+      ],
+      limit: 120,
     }
   );
 
-  for (const row of originsReport.rows || []) {
-    const fonte = row.dimensionValues?.[0]?.value || "(direct)";
-    const sess = Math.round(parseFloat(row.metricValues?.[0]?.value || "0"));
-    const taxaEng = parseFloat((parseFloat(row.metricValues?.[1]?.value || "0") * 100).toFixed(1));
-    const users = Math.round(parseFloat(row.metricValues?.[3]?.value || "1"));
-    const tempoMedio = Math.round(parseFloat(row.metricValues?.[2]?.value || "0") / Math.max(users, 1));
-    let origin = await prisma.ga4Origin.findUnique({ where: { clientId_fonte: { clientId, fonte } } });
-    if (!origin) origin = await prisma.ga4Origin.create({ data: { clientId, fonte } });
-    const existingOm = await prisma.ga4OriginMetric.findUnique({ where: { originId_month: { originId: origin.id, month: mk } } });
-    if (existingOm) await prisma.ga4OriginMetric.update({ where: { id: existingOm.id }, data: { sessoes: sess, taxaEng, tempoMedio } });
-    else await prisma.ga4OriginMetric.create({ data: { originId: origin.id, month: mk, sessoes: sess, taxaEng, tempoMedio } });
+  // GA4 yearMonth: "YYYYMM" (6 chars)
+  const ymToMk = (ym) => `${ym.slice(0, 4)}-${ym.slice(4, 6)}`;
+  const ymToMl = (ym) => `${ym.slice(4, 6)}/${ym.slice(0, 4)}`;
+
+  // Build pages lookup: mk → top-10 entries (already sorted desc by API)
+  const pagesMap = {};
+  for (const row of pagesReport.rows || []) {
+    const ym     = row.dimensionValues?.[0]?.value || "";
+    const pagina = row.dimensionValues?.[1]?.value || "/";
+    const views  = Math.round(parseFloat(row.metricValues?.[0]?.value || "0"));
+    const tempo  = Math.round(parseFloat(row.metricValues?.[1]?.value || "0") / Math.max(views, 1));
+    const mk     = ymToMk(ym);
+    if (!pagesMap[mk]) pagesMap[mk] = [];
+    if (pagesMap[mk].length < 10) pagesMap[mk].push({ pagina, views, tempo });
   }
 
-  return { ok: true, month: mk };
+  // Build origins lookup: mk → top-10 entries
+  const originsMap = {};
+  for (const row of originsReport.rows || []) {
+    const ym       = row.dimensionValues?.[0]?.value || "";
+    const fonte    = row.dimensionValues?.[1]?.value || "(direct)";
+    const sess     = Math.round(parseFloat(row.metricValues?.[0]?.value || "0"));
+    const taxaEng  = parseFloat((parseFloat(row.metricValues?.[1]?.value || "0") * 100).toFixed(1));
+    const users    = Math.round(parseFloat(row.metricValues?.[3]?.value || "1"));
+    const tempoMedio = Math.round(parseFloat(row.metricValues?.[2]?.value || "0") / Math.max(users, 1));
+    const mk       = ymToMk(ym);
+    if (!originsMap[mk]) originsMap[mk] = [];
+    if (originsMap[mk].length < 10) originsMap[mk].push({ fonte, sess, taxaEng, tempoMedio });
+  }
+
+  // Persist each month
+  let savedMonths = 0;
+  let lastMk = null;
+
+  for (const row of mainReport.rows || []) {
+    const ym = row.dimensionValues?.[0]?.value || "";
+    if (ym.length !== 6) continue;
+    const mk = ymToMk(ym);
+    const ml = ymToMl(ym);
+    const v  = row.metricValues || [];
+    const get = (i) => parseFloat(v[i]?.value || "0");
+
+    const usuariosAtivos        = Math.round(get(0));
+    const novosUsuarios         = Math.round(get(1));
+    const usuariosTotais        = Math.round(get(2));
+    const sessoes               = Math.round(get(3));
+    const sessoesEngajadas      = Math.round(get(4));
+    const taxaEngajamento       = parseFloat((get(5) * 100).toFixed(2));
+    const tempoMedioEngajamento = Math.round(get(6) / Math.max(usuariosAtivos, 1));
+    const viewsPorSessao        = parseFloat(get(7).toFixed(2));
+    const numEventos            = Math.round(get(8));
+
+    const ga4Data = { monthLabel: ml, usuariosAtivos, novosUsuarios, usuariosTotais, sessoes, sessoesEngajadas, taxaEngajamento, tempoMedioEngajamento, viewsPorSessao, numEventos };
+    const existing = await prisma.ga4Metric.findUnique({ where: { clientId_month: { clientId, month: mk } } });
+    if (existing) await prisma.ga4Metric.update({ where: { id: existing.id }, data: ga4Data });
+    else await prisma.ga4Metric.create({ data: { clientId, month: mk, ...ga4Data } });
+
+    for (const { pagina, views, tempo } of pagesMap[mk] || []) {
+      const label = pagina === "/" ? "Home" : pagina.replace(/^\/|\/$/g, "").split("/").pop() || pagina;
+      let page = await prisma.ga4Page.findUnique({ where: { clientId_pagina: { clientId, pagina } } });
+      if (page) await prisma.ga4Page.update({ where: { id: page.id }, data: { label } });
+      else page = await prisma.ga4Page.create({ data: { clientId, pagina, label } });
+      const existingPm = await prisma.ga4PageMetric.findUnique({ where: { pageId_month: { pageId: page.id, month: mk } } });
+      if (existingPm) await prisma.ga4PageMetric.update({ where: { id: existingPm.id }, data: { views, tempoMedio: tempo } });
+      else await prisma.ga4PageMetric.create({ data: { pageId: page.id, month: mk, views, tempoMedio: tempo } });
+    }
+
+    for (const { fonte, sess, taxaEng, tempoMedio } of originsMap[mk] || []) {
+      let origin = await prisma.ga4Origin.findUnique({ where: { clientId_fonte: { clientId, fonte } } });
+      if (!origin) origin = await prisma.ga4Origin.create({ data: { clientId, fonte } });
+      const existingOm = await prisma.ga4OriginMetric.findUnique({ where: { originId_month: { originId: origin.id, month: mk } } });
+      if (existingOm) await prisma.ga4OriginMetric.update({ where: { id: existingOm.id }, data: { sessoes: sess, taxaEng, tempoMedio } });
+      else await prisma.ga4OriginMetric.create({ data: { originId: origin.id, month: mk, sessoes: sess, taxaEng, tempoMedio } });
+    }
+
+    savedMonths++;
+    lastMk = mk;
+  }
+
+  return { ok: true, months: savedMonths, month: lastMk };
 }
 
 // ─── Main orchestrator ─────────────────────────────────────────────────────────

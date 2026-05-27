@@ -26,7 +26,8 @@ function MonthSelector({ months, selected, onSelect, color }) {
 export default function Ga4Tab() {
   const clientId = useClientContext();
   const { data, loading, error } = useGa4(clientId);
-  const [mi, setMi] = useState(9);
+  // Inicia em Infinity para que Math.min(Infinity, length-1) selecione sempre o mês mais recente
+  const [mi, setMi] = useState(Infinity);
 
   if (loading) return <LoadingState />;
   if (error)   return <ErrorState message={error} />;

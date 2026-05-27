@@ -10,7 +10,8 @@
     "db:generate": "npx prisma generate",
     "db:seed": "node src/config/seed.js",
     "db:studio": "npx prisma studio",
-    "user:create": "node src/scripts/create-user.js"
+    "user:create": "node src/scripts/create-user.js",
+    "client-user:create": "node src/scripts/create-client-user.js"
   },
   "dependencies": {
     "@prisma/client": "^5.10.2",

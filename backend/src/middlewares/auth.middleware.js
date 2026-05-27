@@ -9,11 +9,26 @@ function authMiddleware(req, res, next) {
   const token = header.split(" ")[1];
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET);
-    req.user = payload;
+
+    if (payload.type === "client") {
+      // Client-user JWT: { clientUserId, clientId, type: "client" }
+      req.clientUser = payload;
+      req.user = null;
+    } else {
+      // Agency JWT: { id, email, role }
+      req.user = payload;
+      req.clientUser = null;
+    }
     next();
   } catch {
     return res.status(401).json({ error: "Token inválido ou expirado" });
   }
+}
+
+// Agency-only routes: reject client JWTs
+function requireAgency(req, res, next) {
+  if (!req.user) return res.status(403).json({ error: "Acesso restrito à agência" });
+  next();
 }
 
 function requireRole(...roles) {
@@ -25,4 +40,4 @@ function requireRole(...roles) {
   };
 }
 
-module.exports = { authMiddleware, requireRole };
+module.exports = { authMiddleware, requireAgency, requireRole };
