@@ -696,13 +696,16 @@ async function syncGa4(clientId, conn) {
 
   const propertyId = meta.propertyId;
 
-  // ── 3 API calls — all covering 365 days via yearMonth dimension ──────────
+  // First day of the month 12 months ago — e.g. "2025-05-01" when running in May 2026.
+  // Anchors to complete months instead of a rolling 365-day window.
+  const _now = new Date();
+  const GA4_START = new Date(_now.getFullYear(), _now.getMonth() - 12, 1).toISOString().slice(0, 10);
 
   const mainReport = await httpPost(
     `https://analyticsdata.googleapis.com/v1beta/${propertyId}:runReport`,
     token,
     {
-      dateRanges: [{ startDate: "365daysAgo", endDate: "today" }],
+      dateRanges: [{ startDate: GA4_START, endDate: "today" }],
       dimensions: [{ name: "yearMonth" }],
       metrics: [
         { name: "activeUsers" },
@@ -723,7 +726,7 @@ async function syncGa4(clientId, conn) {
     `https://analyticsdata.googleapis.com/v1beta/${propertyId}:runReport`,
     token,
     {
-      dateRanges: [{ startDate: "365daysAgo", endDate: "today" }],
+      dateRanges: [{ startDate: GA4_START, endDate: "today" }],
       dimensions: [{ name: "yearMonth" }, { name: "pagePath" }],
       metrics: [{ name: "screenPageViews" }, { name: "userEngagementDuration" }],
       orderBys: [
@@ -738,7 +741,7 @@ async function syncGa4(clientId, conn) {
     `https://analyticsdata.googleapis.com/v1beta/${propertyId}:runReport`,
     token,
     {
-      dateRanges: [{ startDate: "365daysAgo", endDate: "today" }],
+      dateRanges: [{ startDate: GA4_START, endDate: "today" }],
       dimensions: [{ name: "yearMonth" }, { name: "sessionSource" }],
       metrics: [
         { name: "sessions" },
