@@ -759,6 +759,10 @@ async function syncGa4(clientId, conn) {
 
   // GA4 yearMonth: "YYYYMM" (6 chars)
   const ymToMk = (ym) => `${ym.slice(0, 4)}-${ym.slice(4, 6)}`;
+  if (mainReport.error) {
+    console.error(`[ga4] ❌ Erro da API — startDate=${GA4_START}:`, JSON.stringify(mainReport.error));
+    throw new Error(`GA4 API error: ${mainReport.error.message || mainReport.error.status || JSON.stringify(mainReport.error)}`);
+  }
   console.log(`[ga4] startDate=${GA4_START} | API retornou ${mainReport.rows?.length ?? 0} meses:`, (mainReport.rows || []).map(r => r.dimensionValues?.[0]?.value));
   const ymToMl = (ym) => `${ym.slice(4, 6)}/${ym.slice(0, 4)}`;
 
