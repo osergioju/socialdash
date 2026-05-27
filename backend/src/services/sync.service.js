@@ -759,6 +759,7 @@ async function syncGa4(clientId, conn) {
 
   // GA4 yearMonth: "YYYYMM" (6 chars)
   const ymToMk = (ym) => `${ym.slice(0, 4)}-${ym.slice(4, 6)}`;
+  console.log(`[ga4] startDate=${GA4_START} | API retornou ${mainReport.rows?.length ?? 0} meses:`, (mainReport.rows || []).map(r => r.dimensionValues?.[0]?.value));
   const ymToMl = (ym) => `${ym.slice(4, 6)}/${ym.slice(0, 4)}`;
 
   // Build pages lookup: mk → top-10 entries (already sorted desc by API)
