@@ -129,15 +129,27 @@ function httpFacebookBatch(pageToken, requests) {
 // ─── Token refresh helpers ────────────────────────────────────────────────────
 
 async function refreshGoogleToken(conn) {
-  if (!conn.refreshToken) throw new Error("Sem refresh_token para GA4");
+  if (!conn.refreshToken) {
+    console.error("[ga4/refresh] FALHA: conn.refreshToken é null — usuário precisa reconectar o GA4");
+    throw new Error("Sem refresh_token para GA4 — reconecte a integração");
+  }
   const refreshToken = decrypt(conn.refreshToken);
+  console.log("[ga4/refresh] Renovando access_token via refresh_token...");
   const res = await httpPostForm("https://oauth2.googleapis.com/token", {
     grant_type: "refresh_token",
     refresh_token: refreshToken,
     client_id: process.env.GOOGLE_CLIENT_ID,
     client_secret: process.env.GOOGLE_CLIENT_SECRET,
   });
-  if (!res.access_token) throw new Error("Falha ao renovar token Google: " + (res.error_description || res.error || "unknown"));
+  if (!res.access_token) {
+    console.error("[ga4/refresh] FALHA na renovação — resposta do Google:", JSON.stringify(res));
+    const cause =
+      res.error === "invalid_grant"
+        ? "refresh_token inválido ou revogado (app em modo Teste expira em 7 dias, ou usuário revogou acesso)"
+        : res.error_description || res.error || "unknown";
+    throw new Error(`Falha ao renovar token Google: ${cause}`);
+  }
+  console.log("[ga4/refresh] Token renovado com sucesso, expira em", res.expires_in, "s");
   await prisma.platformConnection.update({
     where: { id: conn.id },
     data: {
@@ -150,8 +162,15 @@ async function refreshGoogleToken(conn) {
 
 async function getValidToken(conn) {
   const token = decrypt(conn.accessToken);
-  if (conn.platform === "GOOGLE_ANALYTICS" && conn.expiresAt) {
-    if (new Date(conn.expiresAt) - Date.now() < 5 * 60 * 1000) {
+  if (conn.platform === "GOOGLE_ANALYTICS") {
+    if (!conn.expiresAt) {
+      console.warn("[ga4/token] expiresAt é null — não é possível verificar expiração, usando token atual");
+      return token;
+    }
+    const msUntilExpiry = new Date(conn.expiresAt) - Date.now();
+    console.log(`[ga4/token] expiresAt=${conn.expiresAt.toISOString()} | faltam ${Math.round(msUntilExpiry / 1000)}s`);
+    if (msUntilExpiry < 5 * 60 * 1000) {
+      console.log("[ga4/token] Token expirando/expirado, renovando...");
       return await refreshGoogleToken(conn);
     }
   }
@@ -841,7 +860,8 @@ async function syncClient(clientId) {
         data: { lastSyncAt: new Date() },
       });
     } catch (err) {
-      console.error(`[sync] Erro em ${conn.platform}:`, err.message);
+      console.error(`[sync] ❌ Erro em ${conn.platform} (clientId=${clientId}):`, err.message);
+      if (err.stack) console.error(err.stack);
       results[conn.platform.toLowerCase()] = { ok: false, error: err.message };
     }
   }

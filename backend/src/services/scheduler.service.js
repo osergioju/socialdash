@@ -15,7 +15,7 @@ const STARTUP_DELAY_MS = 30 * 1000;       // 30 s — let the server finish boot
 async function runDailySync() {
   const clients = await prisma.client.findMany({
     where: {
-      connections: { some: { status: "CONNECTED" } },
+      platformConnections: { some: { status: "CONNECTED" } },
     },
     select: { id: true, name: true },
   });
