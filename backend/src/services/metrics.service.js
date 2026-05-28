@@ -36,11 +36,19 @@ async function getInstagramMetrics(clientId) {
     include: { metrics: { orderBy: { month: "asc" } } },
   });
 
-  const themes = await prisma.theme.findMany({
+  const rawThemes = await prisma.theme.findMany({
     where: { clientId, platform: "INSTAGRAM" },
     include: { metrics: { orderBy: { month: "desc" }, take: 1 } },
     orderBy: { createdAt: "asc" },
   });
+
+  const themes = rawThemes.map(({ metrics: tm, ...t }) => ({
+    ...t,
+    curtidas:          tm[0]?.curtidas          ?? null,
+    comentarios:       tm[0]?.comentarios       ?? null,
+    compartilhamentos: tm[0]?.compartilhamentos ?? null,
+    alcanceMedio:      tm[0]?.alcanceMedio      ?? null,
+  }));
 
   const result = { metrics, cities, themes };
   cacheSet(key, result);
@@ -63,11 +71,18 @@ async function getLinkedinMetrics(clientId) {
     include: { metrics: { orderBy: { month: "asc" } } },
   });
 
-  const themes = await prisma.theme.findMany({
+  const rawLiThemes = await prisma.theme.findMany({
     where: { clientId, platform: "LINKEDIN" },
     include: { metrics: { orderBy: { month: "desc" }, take: 1 } },
     orderBy: { createdAt: "asc" },
   });
+
+  const themes = rawLiThemes.map(({ metrics: tm, ...t }) => ({
+    ...t,
+    engajamento:  tm[0]?.engajamento  ?? null,
+    cliques:      tm[0]?.cliques      ?? null,
+    alcanceMedio: tm[0]?.alcanceMedio ?? null,
+  }));
 
   // Industries: fetch with most-recent metric, flatten for API response
   const rawIndustries = await prisma.linkedinIndustry.findMany({
