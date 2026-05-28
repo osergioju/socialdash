@@ -52,7 +52,7 @@ export default function TemasTab() {
   return (
     <>
       {/* IG Temas */}
-      <SectionHeader icon={Layers} title="Temas com Maior Relevância — Instagram" subtitle="Ranking por curtidas acumuladas" color={C.instagram} />
+      <SectionHeader icon={Layers} title="Temas com Maior Relevância — Instagram" subtitle="Ranking por curtidas acumuladas · Categorizado por IA" color={C.instagram} />
       <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "22px" }}>
         {igThemes.length > 0 ? (
           <>

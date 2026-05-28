@@ -93,4 +93,58 @@ Regras:
   return JSON.parse(clean);
 }
 
-module.exports = { generateInsights };
+async function categorizeInstagramPosts({ clientName, posts }) {
+  // posts: [{index, id, caption, likes, comments, reach, shares, month}]
+  const postList = posts
+    .map((p) => `${p.index}. [${p.month}] "${(p.caption || "").slice(0, 150).replace(/\n/g, " ")}" | curtidas:${p.likes} comentários:${p.comments} alcance:${p.reach}`)
+    .join("\n");
+
+  const prompt = `Você é um analista de conteúdo digital. Analise os posts do Instagram do cliente "${clientName}" e agrupe-os em 5 a 8 temas principais em português brasileiro.
+
+Posts:
+${postList}
+
+Retorne APENAS um JSON válido (sem markdown, sem blocos de código):
+{
+  "themes": [
+    {
+      "tema": "Nome do Tema",
+      "icon": "emoji",
+      "postIndexes": [1, 3, 5]
+    }
+  ]
+}
+
+Regras:
+- 5 a 8 temas no máximo
+- Cada post deve pertencer a exatamente um tema (use o número da linha como índice, começando em 1)
+- Posts sem legenda relevante podem ir para um tema "Outros / Institucional"
+- Tema em português conciso (ex: "IPCA / Inflação", "Educação Financeira", "Institucional / Eventos")
+- Icon deve ser um único emoji representativo do tema`;
+
+  const res = await fetch(GROQ_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: "llama-3.3-70b-versatile",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.3,
+      max_tokens: 2048,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Groq API error ${res.status}: ${err}`);
+  }
+
+  const body = await res.json();
+  const text = body.choices?.[0]?.message?.content ?? "";
+  const clean = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+  return JSON.parse(clean);
+}
+
+module.exports = { generateInsights, categorizeInstagramPosts };

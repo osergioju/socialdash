@@ -9,6 +9,7 @@
 const https = require("https");
 const prisma = require("../config/prisma");
 const { encrypt, decrypt } = require("../utils/crypto");
+const { categorizeInstagramPosts } = require("./gemini.service");
 
 const IG_API_VERSION = "v22.0";
 
@@ -325,7 +326,7 @@ async function syncMeta(clientId, conn) {
   const cutoffDate = new Date(now.getFullYear(), now.getMonth() - IG_MONTHS_BACK + 1, 1);
   const allPosts = [];
   let mediaUrl = `https://graph.facebook.com/${IG_API_VERSION}/${igId}/media` +
-    `?fields=id,media_type,timestamp,like_count,comments_count&limit=100`;
+    `?fields=id,media_type,timestamp,like_count,comments_count,caption&limit=100`;
 
   while (mediaUrl) {
     const res = await httpGet(mediaUrl, pageToken).catch(() => ({ data: [] }));
@@ -507,7 +508,110 @@ async function syncMeta(clientId, conn) {
     }
   }
 
+  // ── Salva posts individuais (para categorização por IA) ──────────────────
+  for (const p of filteredPosts) {
+    if (p.media_type === "STORY") continue;
+    const ts = new Date(p.timestamp);
+    const mk = monthKey(ts.getFullYear(), ts.getMonth() + 1);
+    const ins = insightsMap[p.id] || {};
+    const postData = {
+      caption:   p.caption   || null,
+      mediaType: p.media_type,
+      timestamp: ts,
+      month:     mk,
+      likes:     p.like_count     ?? 0,
+      comments:  p.comments_count ?? 0,
+      reach:     ins.reach        ?? 0,
+      saved:     ins.saved        ?? 0,
+      shares:    ins.shares       ?? 0,
+      plays:     ins.plays        ?? 0,
+    };
+    const existing = await prisma.instagramPost.findUnique({ where: { clientId_postId: { clientId, postId: p.id } } });
+    if (existing) {
+      await prisma.instagramPost.update({ where: { id: existing.id }, data: postData });
+    } else {
+      await prisma.instagramPost.create({ data: { clientId, postId: p.id, ...postData } });
+    }
+  }
+
+  // ── Categoriza posts por tema via IA (async, não bloqueia o sync) ─────────
+  categorizeAndSaveThemes(clientId).catch((e) =>
+    console.error("[sync/meta] categorização por IA falhou:", e.message)
+  );
+
   return { ok: true, months: months.length, posts: filteredPosts.length };
+}
+
+async function categorizeAndSaveThemes(clientId) {
+  const client = await prisma.client.findUnique({ where: { id: clientId }, select: { name: true } });
+  const posts = await prisma.instagramPost.findMany({
+    where: { clientId, mediaType: { not: "STORY" } },
+    orderBy: { timestamp: "desc" },
+    take: 150,
+  });
+
+  const postsWithCaption = posts.filter((p) => p.caption && p.caption.trim().length > 5);
+  if (postsWithCaption.length < 3) {
+    console.log(`[categorize/ig] client=${clientId} — menos de 3 posts com legenda, pulando categorização`);
+    return;
+  }
+
+  console.log(`[categorize/ig] client=${clientId} — categorizando ${postsWithCaption.length} posts...`);
+
+  const result = await categorizeInstagramPosts({
+    clientName: client?.name ?? "Cliente",
+    posts: postsWithCaption.map((p, i) => ({
+      index:    i + 1,
+      id:       p.id,
+      caption:  p.caption,
+      likes:    p.likes,
+      comments: p.comments,
+      reach:    p.reach,
+      shares:   p.shares,
+      month:    p.month,
+    })),
+  });
+
+  if (!Array.isArray(result.themes) || result.themes.length === 0) return;
+
+  // Limpa temas existentes do Instagram
+  const existingThemes = await prisma.theme.findMany({ where: { clientId, platform: "INSTAGRAM" } });
+  for (const t of existingThemes) {
+    await prisma.themeMetric.deleteMany({ where: { themeId: t.id } });
+  }
+  await prisma.theme.deleteMany({ where: { clientId, platform: "INSTAGRAM" } });
+
+  const currentMonth = monthKey(new Date().getFullYear(), new Date().getMonth() + 1);
+
+  for (const themeData of result.themes) {
+    if (!themeData.tema || !Array.isArray(themeData.postIndexes)) continue;
+
+    const theme = await prisma.theme.create({
+      data: { clientId, tema: themeData.tema, icon: themeData.icon || "📌", platform: "INSTAGRAM" },
+    });
+
+    const themePosts = themeData.postIndexes
+      .map((i) => postsWithCaption[i - 1])
+      .filter(Boolean);
+
+    if (themePosts.length === 0) continue;
+
+    await prisma.instagramPost.updateMany({
+      where: { id: { in: themePosts.map((p) => p.id) } },
+      data: { themeId: theme.id },
+    });
+
+    const curtidas          = themePosts.reduce((s, p) => s + (p.likes    || 0), 0);
+    const comentarios       = themePosts.reduce((s, p) => s + (p.comments || 0), 0);
+    const compartilhamentos = themePosts.reduce((s, p) => s + (p.shares   || 0), 0);
+    const alcanceMedio      = Math.round(themePosts.reduce((s, p) => s + (p.reach || 0), 0) / themePosts.length);
+
+    await prisma.themeMetric.create({
+      data: { themeId: theme.id, month: currentMonth, curtidas, comentarios, compartilhamentos, alcanceMedio },
+    });
+  }
+
+  console.log(`[categorize/ig] ✅ ${result.themes.length} temas gerados para client=${clientId}`);
 }
 
 // ─── LINKEDIN ─────────────────────────────────────────────────────────────────
