@@ -96,31 +96,15 @@ Regras:
 async function categorizeInstagramPosts({ clientName, posts }) {
   // posts: [{index, id, caption, likes, comments, reach, shares, month}]
   const postList = posts
-    .map((p) => `${p.index}. [${p.month}] "${(p.caption || "").slice(0, 150).replace(/\n/g, " ")}" | curtidas:${p.likes} comentários:${p.comments} alcance:${p.reach}`)
+    .map((p) => `${p.index}.[${p.month}]"${(p.caption || "").slice(0, 70).replace(/\n/g, " ")}" l:${p.likes} c:${p.comments}`)
     .join("\n");
 
-  const prompt = `Você é um analista de conteúdo digital. Analise os posts do Instagram do cliente "${clientName}" e agrupe-os em 5 a 8 temas principais em português brasileiro.
+  const prompt = `Agrupe os posts do Instagram de "${clientName}" em 5-8 temas em português. Retorne APENAS JSON válido:
+{"themes":[{"tema":"Nome","icon":"emoji","postIndexes":[1,2]}]}
+Regras: cada post em exatamente 1 tema, índices começam em 1, temas concisos (ex: "IPCA / Inflação", "Educação Financeira").
 
-Posts:
-${postList}
-
-Retorne APENAS um JSON válido (sem markdown, sem blocos de código):
-{
-  "themes": [
-    {
-      "tema": "Nome do Tema",
-      "icon": "emoji",
-      "postIndexes": [1, 3, 5]
-    }
-  ]
-}
-
-Regras:
-- 5 a 8 temas no máximo
-- Cada post deve pertencer a exatamente um tema (use o número da linha como índice, começando em 1)
-- Posts sem legenda relevante podem ir para um tema "Outros / Institucional"
-- Tema em português conciso (ex: "IPCA / Inflação", "Educação Financeira", "Institucional / Eventos")
-- Icon deve ser um único emoji representativo do tema`;
+Posts (índice.[mês]"legenda" l=likes c=comentários):
+${postList}`;
 
   const res = await fetch(GROQ_URL, {
     method: "POST",

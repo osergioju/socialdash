@@ -545,9 +545,9 @@ async function syncMeta(clientId, conn) {
 async function categorizeAndSaveThemes(clientId) {
   const client = await prisma.client.findUnique({ where: { id: clientId }, select: { name: true } });
   const posts = await prisma.instagramPost.findMany({
-    where: { clientId, mediaType: { not: "STORY" } },
-    orderBy: { timestamp: "desc" },
-    take: 150,
+    where: { clientId, mediaType: { not: "STORY" }, caption: { not: null } },
+    orderBy: { likes: "desc" },
+    take: 80,
   });
 
   const postsWithCaption = posts.filter((p) => p.caption && p.caption.trim().length > 5);
