@@ -1,5 +1,6 @@
 const prisma = require("../config/prisma");
 const metricsService = require("../services/metrics.service");
+const { categorizeAndSaveThemes } = require("../services/sync.service");
 
 
 async function verifyClientAccess(clientId, req) {
@@ -68,6 +69,32 @@ async function getOverview(req, res) {
   }
 }
 
+async function categorizeThemes(req, res) {
+  try {
+    const { clientId } = req.query;
+    if (!clientId) return res.status(400).json({ error: "clientId obrigatório" });
+    await verifyClientAccess(clientId, req);
+
+    // Check how many posts with captions exist
+    const prisma = require("../config/prisma");
+    const totalPosts = await prisma.instagramPost.count({ where: { clientId } });
+    const postsWithCaption = await prisma.instagramPost.count({
+      where: { clientId, caption: { not: null }, mediaType: { not: "STORY" } },
+    });
+
+    if (postsWithCaption < 3) {
+      return res.status(422).json({
+        error: `Poucos posts com legenda encontrados (${postsWithCaption}/${totalPosts} total). Rode um sync primeiro.`,
+      });
+    }
+
+    await categorizeAndSaveThemes(clientId);
+    res.json({ ok: true, postsWithCaption, totalPosts });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+}
+
 async function getAiInsights(req, res) {
   try {
     const { clientId } = req.query;
@@ -81,4 +108,4 @@ async function getAiInsights(req, res) {
   }
 }
 
-module.exports = { getInstagram, getLinkedin, getGa4, getOverview, getAiInsights };
+module.exports = { getInstagram, getLinkedin, getGa4, getOverview, getAiInsights, categorizeThemes };

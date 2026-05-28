@@ -1,5 +1,5 @@
-import React from "react";
-import { Layers, Award, Zap, RefreshCw } from "lucide-react";
+import React, { useState } from "react";
+import { Layers, Award, Zap, RefreshCw, Sparkles } from "lucide-react";
 import { useInstagram, useLinkedin, useAiInsights } from "../../hooks/useMetrics";
 import { useClientContext } from "../../contexts/ClientContext";
 import { LoadingState, ErrorState } from "../../components/ui/LoadingState";
@@ -7,6 +7,7 @@ import SectionHeader from "../../components/ui/SectionHeader";
 import ThemeRankCard from "../../components/ui/ThemeRankCard";
 import { C } from "../../utils/colors";
 import { fmt } from "../../utils/format";
+import { metricsApi } from "../../services/api";
 
 const PLATFORM_COLOR = {
   instagram: C.instagram,
@@ -38,6 +39,21 @@ export default function TemasTab() {
   const ig = useInstagram(clientId);
   const li = useLinkedin(clientId);
   const ai = useAiInsights(clientId);
+  const [categorizing, setCategorizing] = useState(false);
+  const [categorizeError, setCategorizeError] = useState(null);
+
+  async function handleCategorize() {
+    setCategorizing(true);
+    setCategorizeError(null);
+    try {
+      await metricsApi.categorizeThemes(clientId);
+      ig.reload();
+    } catch (e) {
+      setCategorizeError(e.response?.data?.error || "Erro ao categorizar temas");
+    } finally {
+      setCategorizing(false);
+    }
+  }
 
   if (ig.loading || li.loading) return <LoadingState />;
   if (ig.error) return <ErrorState message={ig.error} />;
@@ -73,7 +89,28 @@ export default function TemasTab() {
             </div>
           </>
         ) : (
-          <p style={{ color: C.textMuted, fontSize: 13, textAlign: "center", padding: "20px 0" }}>Nenhum tema cadastrado para Instagram.</p>
+          <div style={{ textAlign: "center", padding: "24px 0" }}>
+            <p style={{ color: C.textMuted, fontSize: 13, marginBottom: 16 }}>
+              Nenhum tema gerado ainda. Clique para categorizar os posts por IA.
+            </p>
+            {categorizeError && (
+              <p style={{ color: C.red, fontSize: 12, marginBottom: 12 }}>{categorizeError}</p>
+            )}
+            <button
+              onClick={handleCategorize}
+              disabled={categorizing}
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 8,
+                background: C.instagram, color: "#fff", border: "none",
+                borderRadius: 8, padding: "10px 20px", fontSize: 13,
+                fontWeight: 600, cursor: categorizing ? "not-allowed" : "pointer",
+                opacity: categorizing ? 0.7 : 1,
+              }}
+            >
+              <Sparkles size={14} style={{ animation: categorizing ? "spin 1s linear infinite" : "none" }} />
+              {categorizing ? "Categorizando com IA..." : "Gerar Temas por IA"}
+            </button>
+          </div>
         )}
       </div>
 
