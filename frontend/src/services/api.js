@@ -46,10 +46,11 @@ export const authApi = {
 };
 
 export const metricsApi = {
-  overview:  (clientId) => api.get("/metrics/overview",  { params: { clientId } }).then((r) => r.data),
-  instagram: (clientId) => api.get("/metrics/instagram", { params: { clientId } }).then((r) => r.data),
-  linkedin:  (clientId) => api.get("/metrics/linkedin",  { params: { clientId } }).then((r) => r.data),
-  ga4:       (clientId) => api.get("/metrics/ga4",       { params: { clientId } }).then((r) => r.data),
+  overview:    (clientId)         => api.get("/metrics/overview",     { params: { clientId } }).then((r) => r.data),
+  instagram:   (clientId)         => api.get("/metrics/instagram",    { params: { clientId } }).then((r) => r.data),
+  linkedin:    (clientId)         => api.get("/metrics/linkedin",     { params: { clientId } }).then((r) => r.data),
+  ga4:         (clientId)         => api.get("/metrics/ga4",          { params: { clientId } }).then((r) => r.data),
+  aiInsights:  (clientId, force)  => api.get("/metrics/ai-insights",  { params: { clientId, force: force || undefined } }).then((r) => r.data),
 };
 
 export const syncApi = {

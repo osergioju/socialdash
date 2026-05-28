@@ -48,6 +48,7 @@ model Client {
   ga4Origins         Ga4Origin[]
   linkedinIndustries LinkedinIndustry[]
   linkedinRoles      LinkedinRole[]
+  aiInsights         AiInsight[]
   createdAt          DateTime             @default(now())
   updatedAt          DateTime             @updatedAt
 
@@ -335,4 +336,19 @@ model LinkedinRoleMetric {
 
   @@unique([roleId, month])
   @@map("linkedin_role_metrics")
+}
+
+model AiInsight {
+  id             String   @id @default(cuid())
+  clientId       String
+  client         Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  month          String   // "2025-04"
+  canalPrincipal Json
+  insights       Json
+  generatedAt    DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([clientId, month])
+  @@map("ai_insights")
 }

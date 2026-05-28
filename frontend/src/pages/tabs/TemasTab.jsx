@@ -1,6 +1,6 @@
 import React from "react";
-import { Layers, Award, Zap } from "lucide-react";
-import { useInstagram, useLinkedin } from "../../hooks/useMetrics";
+import { Layers, Award, Zap, RefreshCw } from "lucide-react";
+import { useInstagram, useLinkedin, useAiInsights } from "../../hooks/useMetrics";
 import { useClientContext } from "../../contexts/ClientContext";
 import { LoadingState, ErrorState } from "../../components/ui/LoadingState";
 import SectionHeader from "../../components/ui/SectionHeader";
@@ -8,28 +8,36 @@ import ThemeRankCard from "../../components/ui/ThemeRankCard";
 import { C } from "../../utils/colors";
 import { fmt } from "../../utils/format";
 
-const CANAL_PRINCIPAL = [
-  { metric: "Crescimento Seguidores", winner: "LinkedIn",        value: "Base maior, constante", color: C.linkedin,  note: "Crescimento orgânico estável" },
-  { metric: "Engajamento / Post",     winner: "Instagram",       value: "Reels ~10% ER",         color: C.instagram, note: "Reels são motor de engajamento" },
-  { metric: "Alcance Orgânico",       winner: "Instagram",       value: "Pico com Reels",        color: C.instagram, note: "Conteúdo em vídeo dobra alcance" },
-  { metric: "Cliques / Ações",        winner: "LinkedIn",        value: "Eventos geram ação",    color: C.linkedin,  note: "Eventos geram mais cliques" },
-  { metric: "Tráfego pro Site",       winner: "Google Orgânico", value: "~55% do tráfego",       color: C.ga4,       note: "SEO é o maior canal de aquisição" },
-  { metric: "Autoridade",             winner: "LinkedIn",        value: "Governança + Dados",    color: C.linkedin,  note: "Posts de congressos e conselhos" },
-];
+const PLATFORM_COLOR = {
+  instagram: C.instagram,
+  linkedin:  C.linkedin,
+  ga4:       C.ga4,
+  mixed:     C.primary,
+};
 
-const INSIGHTS = [
-  { title: "🎬 Reels é o motor",          desc: "Conteúdo em vídeo curto maximiza alcance e interações. Priorize Reels com temas comportamentais e dados.",                          color: C.instagram },
-  { title: "⚠️ LinkedIn: reposicionar",   desc: "Queda de engajamento demanda editorial exclusivo: voz institucional, macrocenário e dados com profundidade.",                     color: C.linkedin  },
-  { title: "📊 'Dados que Falam'",        desc: "Conteúdo baseado em dados funciona em ambos canais. No IG gera curtidas, no LI gera cliques. Manter como pilar fixo.",           color: C.primary   },
-  { title: "🌐 Site: revisar UX",         desc: "Taxa de engajamento em queda. Páginas-chave precisam de CTAs mais claros e fluxo de conversão otimizado.",                       color: C.ga4       },
-  { title: "📱 Stories = oportunidade",   desc: "Quando há ritmo e consistência, a audiência acompanha. Canal ideal para educação financeira e interação.",                        color: C.accent    },
-  { title: "🎯 Meta: +50% engajamento",  desc: "Dobrar Reels (min 8/mês), editorial exclusivo LI, 'Dados que Falam' quinzenal, integração redes → site.",                        color: C.green     },
-];
+function platformColor(p) {
+  return PLATFORM_COLOR[p] || C.primary;
+}
+
+function InsightSkeleton() {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+      {Array.from({ length: 6 }).map((_, i) => (
+        <div key={i} style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "18px", borderLeft: `3px solid ${C.border}` }}>
+          <div style={{ height: 13, background: C.border, borderRadius: 4, width: "60%", marginBottom: 10 }} />
+          <div style={{ height: 10, background: C.border, borderRadius: 4, width: "100%", marginBottom: 6 }} />
+          <div style={{ height: 10, background: C.border, borderRadius: 4, width: "80%" }} />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function TemasTab() {
   const clientId = useClientContext();
   const ig = useInstagram(clientId);
   const li = useLinkedin(clientId);
+  const ai = useAiInsights(clientId);
 
   if (ig.loading || li.loading) return <LoadingState />;
   if (ig.error) return <ErrorState message={ig.error} />;
@@ -37,6 +45,9 @@ export default function TemasTab() {
 
   const igThemes = ig.data?.themes || [];
   const liThemes = li.data?.themes || [];
+
+  const canalPrincipal = ai.data?.canalPrincipal || [];
+  const insights       = ai.data?.insights || [];
 
   return (
     <>
@@ -94,28 +105,78 @@ export default function TemasTab() {
       {/* Canal Principal por Indicador */}
       <SectionHeader icon={Award} title="Canal Principal por Indicador" color={C.primary} />
       <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "22px" }}>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 14 }}>
-          {CANAL_PRINCIPAL.map((item, i) => (
-            <div key={i} style={{ padding: "14px", background: C.bg, borderRadius: 10, border: `1px solid ${C.border}` }}>
-              <div style={{ fontSize: 10, color: C.textDim, marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.05em" }}>{item.metric}</div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: item.color, marginBottom: 3 }}>{item.winner}</div>
-              <div style={{ fontSize: 12, color: C.text, fontWeight: 600 }}>{item.value}</div>
-              <div style={{ fontSize: 10, color: C.textMuted, marginTop: 3 }}>{item.note}</div>
-            </div>
-          ))}
-        </div>
+        {ai.loading ? (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 14 }}>
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} style={{ padding: "14px", background: C.bg, borderRadius: 10, border: `1px solid ${C.border}` }}>
+                <div style={{ height: 10, background: C.border, borderRadius: 3, width: "70%", marginBottom: 8 }} />
+                <div style={{ height: 14, background: C.border, borderRadius: 3, width: "50%", marginBottom: 6 }} />
+                <div style={{ height: 10, background: C.border, borderRadius: 3, width: "90%" }} />
+              </div>
+            ))}
+          </div>
+        ) : canalPrincipal.length > 0 ? (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))", gap: 14 }}>
+            {canalPrincipal.map((item, i) => (
+              <div key={i} style={{ padding: "14px", background: C.bg, borderRadius: 10, border: `1px solid ${C.border}` }}>
+                <div style={{ fontSize: 10, color: C.textDim, marginBottom: 5, textTransform: "uppercase", letterSpacing: "0.05em" }}>{item.metric}</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: platformColor(item.platform), marginBottom: 3 }}>{item.winner}</div>
+                <div style={{ fontSize: 12, color: C.text, fontWeight: 600 }}>{item.value}</div>
+                <div style={{ fontSize: 10, color: C.textMuted, marginTop: 3 }}>{item.note}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p style={{ color: C.textMuted, fontSize: 13, textAlign: "center", padding: "20px 0" }}>
+            {ai.error || "Sem dados para análise."}
+          </p>
+        )}
       </div>
 
       {/* Insights Estratégicos */}
-      <SectionHeader icon={Zap} title="Insights Estratégicos" subtitle="Baseados na análise do período" color={C.accent} />
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        {INSIGHTS.map((ins, i) => (
-          <div key={i} style={{ background: C.card, border: `1px solid ${ins.color}25`, borderRadius: 12, padding: "18px", borderLeft: `3px solid ${ins.color}` }}>
-            <h4 style={{ margin: "0 0 6px", fontSize: 13, fontWeight: 700, color: C.text }}>{ins.title}</h4>
-            <p style={{ margin: 0, fontSize: 11, color: C.textMuted, lineHeight: 1.6 }}>{ins.desc}</p>
-          </div>
-        ))}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <SectionHeader icon={Zap} title="Insights Estratégicos" subtitle="Gerados por IA com base nos dados do período" color={C.accent} />
+        {!ai.loading && (
+          <button
+            onClick={ai.regenerate}
+            disabled={ai.generating}
+            style={{
+              display: "flex", alignItems: "center", gap: 6,
+              background: "transparent", border: `1px solid ${C.border}`,
+              color: ai.generating ? C.textDim : C.textMuted,
+              borderRadius: 8, padding: "6px 12px", fontSize: 11,
+              cursor: ai.generating ? "not-allowed" : "pointer",
+            }}
+          >
+            <RefreshCw size={12} style={{ animation: ai.generating ? "spin 1s linear infinite" : "none" }} />
+            {ai.generating ? "Gerando..." : "Regenerar"}
+          </button>
+        )}
       </div>
+
+      {ai.loading || ai.generating ? (
+        <InsightSkeleton />
+      ) : insights.length > 0 ? (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          {insights.map((ins, i) => {
+            const color = platformColor(ins.platform);
+            return (
+              <div key={i} style={{ background: C.card, border: `1px solid ${color}25`, borderRadius: 12, padding: "18px", borderLeft: `3px solid ${color}` }}>
+                <h4 style={{ margin: "0 0 6px", fontSize: 13, fontWeight: 700, color: C.text }}>{ins.title}</h4>
+                <p style={{ margin: 0, fontSize: 11, color: C.textMuted, lineHeight: 1.6 }}>{ins.desc}</p>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: "24px", textAlign: "center" }}>
+          <p style={{ color: C.textMuted, fontSize: 13, margin: 0 }}>
+            {ai.error ? `Erro: ${ai.error}` : "Sem dados suficientes para gerar insights."}
+          </p>
+        </div>
+      )}
+
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </>
   );
 }

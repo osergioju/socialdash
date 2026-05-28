@@ -1,6 +1,7 @@
 const prisma = require("../config/prisma");
 const metricsService = require("../services/metrics.service");
 
+
 async function verifyClientAccess(clientId, req) {
   if (req.clientUser) {
     // Client JWT: token is scoped to a specific clientId — just verify it matches
@@ -67,4 +68,17 @@ async function getOverview(req, res) {
   }
 }
 
-module.exports = { getInstagram, getLinkedin, getGa4, getOverview };
+async function getAiInsights(req, res) {
+  try {
+    const { clientId } = req.query;
+    if (!clientId) return res.status(400).json({ error: "clientId obrigatório" });
+    await verifyClientAccess(clientId, req);
+    const force = req.query.force === "true";
+    const data = await metricsService.getAiInsights(clientId, force);
+    res.json(data);
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+}
+
+module.exports = { getInstagram, getLinkedin, getGa4, getOverview, getAiInsights };

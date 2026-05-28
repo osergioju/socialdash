@@ -1,4 +1,5 @@
 const prisma = require("../config/prisma");
+const { generateInsights } = require("./gemini.service");
 
 // ─── In-memory TTL cache (5 min) ──────────────────────────────────────────────
 const CACHE_TTL = 5 * 60 * 1000;
@@ -177,4 +178,62 @@ function varLast(arr) {
   return +(((curr - prev) / prev) * 100).toFixed(1);
 }
 
-module.exports = { getInstagramMetrics, getLinkedinMetrics, getGa4Metrics, getOverview, invalidateCache };
+// ─── AI Insights ──────────────────────────────────────────────────────────────
+const STALE_DAYS = 15;
+
+async function getAiInsights(clientId, forceRegenerate = false) {
+  const client = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: { name: true },
+  });
+
+  const now = new Date();
+  const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+  if (!forceRegenerate) {
+    const existing = await prisma.aiInsight.findUnique({
+      where: { clientId_month: { clientId, month } },
+    });
+    if (existing) {
+      const ageMs = now - new Date(existing.generatedAt);
+      const ageDays = ageMs / (1000 * 60 * 60 * 24);
+      if (ageDays < STALE_DAYS) {
+        return { ...existing, cached: true };
+      }
+    }
+  }
+
+  // Fetch last available metric for each platform
+  const [ig, li, ga4] = await Promise.all([
+    prisma.instagramMetric.findFirst({ where: { clientId }, orderBy: { month: "desc" } }),
+    prisma.linkedinMetric.findFirst({ where: { clientId }, orderBy: { month: "desc" } }),
+    prisma.ga4Metric.findFirst({ where: { clientId }, orderBy: { month: "desc" } }),
+  ]);
+
+  const generated = await generateInsights({
+    clientName: client?.name ?? "Cliente",
+    ig: ig ?? null,
+    li: li ?? null,
+    ga4: ga4 ?? null,
+  });
+
+  const saved = await prisma.aiInsight.upsert({
+    where: { clientId_month: { clientId, month } },
+    update: {
+      canalPrincipal: generated.canalPrincipal,
+      insights: generated.insights,
+      generatedAt: now,
+    },
+    create: {
+      clientId,
+      month,
+      canalPrincipal: generated.canalPrincipal,
+      insights: generated.insights,
+      generatedAt: now,
+    },
+  });
+
+  return { ...saved, cached: false };
+}
+
+module.exports = { getInstagramMetrics, getLinkedinMetrics, getGa4Metrics, getOverview, getAiInsights, invalidateCache };
