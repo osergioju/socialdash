@@ -365,7 +365,8 @@ async function listGa4Properties(clientId) {
     throw Object.assign(new Error("Conexão Google não encontrada para este cliente"), { status: 404 });
   }
 
-  const token = decrypt(conn.accessToken);
+  // Token do Google expira em ~1h — renova via refresh_token se necessário
+  const token = await require("./sync.service").getValidToken(conn);
   const res = await httpGet("https://analyticsadmin.googleapis.com/v1alpha/accountSummaries", token);
 
   if (res.error) {
@@ -395,7 +396,7 @@ async function selectGa4Property(clientId, propertyId, requestingUserId) {
     throw Object.assign(new Error("Sem permissão"), { status: 403 });
   }
 
-  const token = decrypt(conn.accessToken);
+  const token = await require("./sync.service").getValidToken(conn);
   const propRes = await httpGet(`https://analyticsadmin.googleapis.com/v1alpha/${propertyId}`, token).catch(() => null);
   const propertyName = propRes?.displayName || propertyId;
 

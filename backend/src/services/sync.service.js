@@ -1002,4 +1002,4 @@ async function getSyncStatus(clientId) {
   });
 }
 
-module.exports = { syncClient, getSyncStatus, categorizeAndSaveThemes };
+module.exports = { syncClient, getSyncStatus, categorizeAndSaveThemes, getValidToken };
