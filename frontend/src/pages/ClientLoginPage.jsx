@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, Link } from "react-router-dom";
 import { useClientAuth } from "../contexts/ClientAuthContext";
 import { C } from "../utils/colors";
 
@@ -75,6 +75,13 @@ export default function ClientLoginPage() {
               {loading ? "Entrando..." : "Entrar"}
             </button>
           </form>
+        </div>
+
+        {/* Política de Privacidade */}
+        <div style={{ textAlign: "center", marginTop: 20 }}>
+          <Link to="/privacidade" style={{ fontSize: 13, color: C.textMuted, textDecoration: "underline" }}>
+            Política de Privacidade
+          </Link>
         </div>
 
       </div>

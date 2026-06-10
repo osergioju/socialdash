@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { C } from "../utils/colors";
 
@@ -76,6 +76,13 @@ export default function LoginPage() {
               {loading ? "Entrando..." : "Entrar"}
             </button>
           </form>
+        </div>
+
+        {/* Política de Privacidade */}
+        <div style={{ textAlign: "center", marginTop: 20 }}>
+          <Link to="/privacidade" style={{ fontSize: 13, color: C.textMuted, textDecoration: "underline" }}>
+            Política de Privacidade
+          </Link>
         </div>
 
       </div>

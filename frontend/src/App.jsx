@@ -11,6 +11,7 @@ import DashboardPage           from "./pages/DashboardPage";
 import OAuthCallbackPage       from "./pages/OAuthCallbackPage";
 import ClientLoginPage         from "./pages/ClientLoginPage";
 import ClientDashboardPage     from "./pages/ClientDashboardPage";
+import PrivacyPolicyPage       from "./pages/PrivacyPolicyPage";
 
 export default function App() {
   return (
@@ -20,6 +21,7 @@ export default function App() {
           {/* Público — agência */}
           <Route path="/login"          element={<LoginPage />} />
           <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
+          <Route path="/privacidade"    element={<PrivacyPolicyPage />} />
 
           {/* Área da agência */}
           <Route path="/" element={<Navigate to="/clients" replace />} />
