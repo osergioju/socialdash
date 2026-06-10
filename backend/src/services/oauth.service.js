@@ -43,10 +43,13 @@ const PLATFORM_CONFIG = {
   LINKEDIN: {
     authUrl: "https://www.linkedin.com/oauth/v2/authorization",
     tokenUrl: "https://www.linkedin.com/oauth/v2/accessToken",
-    // openid+profile+email: disponíveis sem aprovação especial (OpenID Connect)
-    // r_organization_social+rw_organization_admin: requerem Marketing Developer Platform (MDP)
-    // Solicitar todos juntos — LinkedIn retorna os aprovados; sem MDP os de org serão negados
-    scopes: "openid profile email r_organization_social rw_organization_admin",
+    // openid+profile+email: disponíveis com "Sign In with LinkedIn" (OpenID Connect)
+    // r_organization_social+rw_organization_admin: requerem Community Management API aprovada
+    // LinkedIn rejeita o fluxo se algum escopo não estiver autorizado no app —
+    // enquanto a CMA não for aprovada, defina LINKEDIN_SCOPES="openid profile email" no .env
+    scopes: () =>
+      process.env.LINKEDIN_SCOPES ||
+      "openid profile email r_organization_social rw_organization_admin",
     clientId: () => process.env.LINKEDIN_CLIENT_ID,
     secret: () => process.env.LINKEDIN_CLIENT_SECRET,
     redirectPath: "/oauth/linkedin/callback",
@@ -75,7 +78,7 @@ function buildAuthUrl(platform, clientId, userId) {
     redirect_uri: callbackUrl(platform),
     response_type: "code",
     state,
-    scope: cfg.scopes,
+    scope: typeof cfg.scopes === "function" ? cfg.scopes() : cfg.scopes,
   });
 
   // Google extras
