@@ -25,7 +25,7 @@ export default function AgencyLayout({ children }) {
             </div>
             <div>
               <div style={{ fontSize: 14, fontWeight: 900, color: C.text, lineHeight: 1.1, letterSpacing: "-0.02em" }}>CRT Ecosystem</div>
-              <div style={{ fontSize: 10, color: C.textMuted, marginTop: 1 }}>Gestão de Mídias Sociaisxxxx</div>
+              <div style={{ fontSize: 10, color: C.textMuted, marginTop: 1 }}>Gestão de Mídias Sociais</div>
             </div>
           </div>
         </div>
