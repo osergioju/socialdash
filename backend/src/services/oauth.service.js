@@ -426,8 +426,11 @@ async function listLinkedinOrgs(clientId) {
   }
 
   const token = decrypt(conn.accessToken);
+  // Sem filtro de role/state: lista TODAS as orgs em que o usuário tem qualquer papel
+  // (Super Admin, Content Admin, Analyst, etc.). O filtro role=ADMINISTRATOR escondia
+  // páginas onde o usuário não é Super Admin.
   const res = await httpGet(
-    "https://api.linkedin.com/v2/organizationalEntityAcls?q=roleAssignee&role=ADMINISTRATOR&state=APPROVED&count=25",
+    "https://api.linkedin.com/v2/organizationalEntityAcls?q=roleAssignee&count=25",
     token
   );
 
@@ -436,8 +439,11 @@ async function listLinkedinOrgs(clientId) {
   }
 
   const orgs = [];
+  const seen = new Set();
   for (const el of (res.elements || [])) {
     const orgUrn = el.organizationalTarget;
+    if (seen.has(orgUrn)) continue; // dedupe: mesma org pode vir em múltiplos papéis
+    seen.add(orgUrn);
     const orgId = orgUrn.split(":").pop();
     const orgRes = await httpGet(
       `https://api.linkedin.com/v2/organizations/${orgId}?fields=localizedName,vanityName`,
