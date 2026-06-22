@@ -15,13 +15,13 @@ const IG_API_VERSION = "v22.0";
 
 // ─── HTTP helpers ─────────────────────────────────────────────────────────────
 
-function httpGet(url, token) {
+function httpGet(url, token, extraHeaders = {}) {
   return new Promise((resolve, reject) => {
     const parsed = new URL(url);
     const opts = {
       hostname: parsed.hostname,
       path: parsed.pathname + parsed.search,
-      headers: { Authorization: `Bearer ${token}` },
+      headers: { Authorization: `Bearer ${token}`, ...extraHeaders },
     };
     https.get(opts, (res) => {
       let raw = "";
@@ -628,18 +628,23 @@ const LI_FUNCTIONS = {
   23: "Imobiliário", 24: "Pesquisa", 25: "Vendas", 26: "Suporte",
 };
 
-// Indústrias são centenas e mudam — busca os nomes na API e cacheia em memória.
+// Versão da API versionada (rest/*) do LinkedIn. Versões expiram ~1 ano; quando
+// der 426 "version not active", basta atualizar a env LINKEDIN_API_VERSION.
+const LI_VERSION = process.env.LINKEDIN_API_VERSION || "202506";
+
+// Indústrias são centenas e mudam — busca os nomes na API (rest/industries, só
+// retorna en_US) e cacheia em memória. O endpoint v2/industries não aceita locale.
 const _industryCache = new Map(); // id -> nome
 async function liIndustryName(token, urn) {
   const id = String(urn || "").split(":").pop();
   if (!id) return "Indústria desconhecida";
   if (_industryCache.has(id)) return _industryCache.get(id);
   const res = await httpGet(
-    `https://api.linkedin.com/v2/industries/${id}?locale=pt_BR`,
-    token
+    `https://api.linkedin.com/rest/industries/${id}`,
+    token,
+    { "LinkedIn-Version": LI_VERSION }
   ).catch(() => null);
   const nome =
-    res?.name?.localized?.pt_BR ||
     res?.name?.localized?.en_US ||
     (res?.name?.localized && Object.values(res.name.localized)[0]) ||
     `Indústria ${id}`;
@@ -663,6 +668,115 @@ async function discoverLinkedinOrg(token) {
   const orgId = orgUrn.split(":").pop();
   const orgRes = await httpGet(`https://api.linkedin.com/v2/organizations/${orgId}?fields=localizedName`, token).catch(() => ({}));
   return { organizationUrn: orgUrn, organizationId: orgId, organizationName: orgRes.localizedName || orgId };
+}
+
+// Busca os posts da organização (rest/posts, API versionada). Pagina até `max`.
+async function fetchLinkedinPosts(token, orgUrnRaw, max = 50) {
+  const enc = encodeURIComponent(orgUrnRaw);
+  const out = [];
+  let start = 0;
+  while (out.length < max) {
+    const res = await httpGet(
+      `https://api.linkedin.com/rest/posts?q=author&author=${enc}&count=20&start=${start}&sortBy=LAST_MODIFIED`,
+      token,
+      { "LinkedIn-Version": LI_VERSION }
+    ).catch(() => null);
+    const els = res?.elements || [];
+    if (els.length === 0) break;
+    out.push(...els);
+    if (els.length < 20) break;
+    start += 20;
+  }
+  return out.slice(0, max);
+}
+
+// Engajamento por post via shareStatistics (facet ugcPosts/shares, lotes de 20).
+async function fetchLinkedinPostStats(token, orgUrnRaw, postUrns) {
+  const enc = encodeURIComponent(orgUrnRaw);
+  const stats = {}; // urn -> totalShareStatistics
+  const groups = { ugcPosts: [], shares: [] };
+  for (const urn of postUrns) {
+    if (urn.includes(":ugcPost:")) groups.ugcPosts.push(urn);
+    else if (urn.includes(":share:")) groups.shares.push(urn);
+  }
+  for (const [facet, urns] of Object.entries(groups)) {
+    for (let i = 0; i < urns.length; i += 20) {
+      const list = urns.slice(i, i + 20).map(encodeURIComponent).join(",");
+      const res = await httpGet(
+        `https://api.linkedin.com/rest/organizationalEntityShareStatistics?q=organizationalEntity&organizationalEntity=${enc}&${facet}=List(${list})`,
+        token,
+        { "LinkedIn-Version": LI_VERSION }
+      ).catch(() => null);
+      for (const el of (res?.elements || [])) {
+        const key = el.ugcPost || el.share;
+        if (key) stats[key] = el.totalShareStatistics || {};
+      }
+    }
+  }
+  return stats;
+}
+
+// Busca posts, pega engajamento, categoriza em temas (Gemini) e salva (platform=LINKEDIN).
+async function categorizeAndSaveLinkedinThemes(clientId, token, orgUrnRaw) {
+  const client = await prisma.client.findUnique({ where: { id: clientId }, select: { name: true } });
+  const rawPosts = await fetchLinkedinPosts(token, orgUrnRaw, 50);
+  const withText = rawPosts.filter((p) => (p.commentary || "").trim().length > 20);
+  if (withText.length < 3) {
+    console.log(`[categorize/li] client=${clientId} — menos de 3 posts com texto, pulando`);
+    return;
+  }
+
+  const statsMap = await fetchLinkedinPostStats(token, orgUrnRaw, withText.map((p) => p.id));
+
+  const posts = withText.map((p, i) => {
+    const s = statsMap[p.id] || {};
+    const likes = s.likeCount || 0, comments = s.commentCount || 0;
+    const shares = Math.max(0, s.shareCount || 0), clicks = s.clickCount || 0;
+    const d = new Date(p.publishedAt || p.createdAt || Date.now());
+    return {
+      index: i + 1, id: p.id, caption: p.commentary,
+      likes, comments, shares, clicks,
+      reach: s.uniqueImpressionsCount || 0,
+      engajamento: likes + comments + shares + clicks,
+      month: monthKey(d.getFullYear(), d.getMonth() + 1),
+    };
+  });
+
+  const result = await categorizeInstagramPosts({
+    clientName: client?.name ?? "Cliente",
+    posts,
+    platformLabel: "LinkedIn",
+  });
+  if (!Array.isArray(result.themes) || result.themes.length === 0) return;
+
+  // Limpa temas LinkedIn antigos
+  const existing = await prisma.theme.findMany({ where: { clientId, platform: "LINKEDIN" } });
+  for (const t of existing) await prisma.themeMetric.deleteMany({ where: { themeId: t.id } });
+  await prisma.theme.deleteMany({ where: { clientId, platform: "LINKEDIN" } });
+
+  const currentMonth = monthKey(new Date().getFullYear(), new Date().getMonth() + 1);
+
+  for (const themeData of result.themes) {
+    if (!themeData.tema || !Array.isArray(themeData.postIndexes)) continue;
+    const tp = themeData.postIndexes.map((i) => posts[i - 1]).filter(Boolean);
+    if (tp.length === 0) continue;
+
+    const theme = await prisma.theme.create({
+      data: { clientId, tema: themeData.tema, icon: themeData.icon || "📌", platform: "LINKEDIN" },
+    });
+
+    await prisma.themeMetric.create({
+      data: {
+        themeId: theme.id, month: currentMonth,
+        engajamento:  tp.reduce((s, p) => s + p.engajamento, 0),
+        cliques:      tp.reduce((s, p) => s + p.clicks, 0),
+        curtidas:     tp.reduce((s, p) => s + p.likes, 0),
+        comentarios:  tp.reduce((s, p) => s + p.comments, 0),
+        alcanceMedio: Math.round(tp.reduce((s, p) => s + p.reach, 0) / tp.length),
+      },
+    });
+  }
+  console.log(`[categorize/li] ✅ ${result.themes.length} temas LinkedIn para client=${clientId}`);
 }
 
 async function syncLinkedin(clientId, conn) {
@@ -771,6 +885,11 @@ async function syncLinkedin(clientId, conn) {
       else             await prisma.linkedinRoleMetric.create({ data: { roleId: role.id, month: currentMk, seguidores: seg } });
     }
   }
+
+  // ── Temas (ranking por engajamento): busca posts + categoriza via Gemini ──
+  await categorizeAndSaveLinkedinThemes(clientId, token, meta.organizationUrn).catch((e) =>
+    console.error(`[categorize/li] erro client=${clientId}:`, e.message)
+  );
 
   return { ok: true, months: LI_MONTHS_BACK, month: currentMk };
 }

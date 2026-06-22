@@ -93,13 +93,13 @@ Regras:
   return JSON.parse(clean);
 }
 
-async function categorizeInstagramPosts({ clientName, posts }) {
+async function categorizeInstagramPosts({ clientName, posts, platformLabel = "Instagram" }) {
   // posts: [{index, id, caption, likes, comments, reach, shares, month}]
   const postList = posts
     .map((p) => `${p.index}.[${p.month}]"${(p.caption || "").slice(0, 70).replace(/\n/g, " ")}" l:${p.likes} c:${p.comments}`)
     .join("\n");
 
-  const prompt = `Agrupe os posts do Instagram de "${clientName}" em 5-8 temas em português. Retorne APENAS JSON válido:
+  const prompt = `Agrupe os posts do ${platformLabel} de "${clientName}" em 5-8 temas em português. Retorne APENAS JSON válido:
 {"themes":[{"tema":"Nome","icon":"emoji","postIndexes":[1,2]}]}
 Regras: cada post em exatamente 1 tema, índices começam em 1, temas concisos (ex: "IPCA / Inflação", "Educação Financeira").
 
