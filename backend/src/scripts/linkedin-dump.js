@@ -78,20 +78,12 @@ async function main() {
     await httpGet(`https://api.linkedin.com/v2/organizationalEntityFollowerStatistics?q=organizationalEntity&organizationalEntity=${enc}`, token)
   );
   show(
-    "organizationPageStatistics (views da página)",
-    await httpGet(
-      `https://api.linkedin.com/v2/organizationPageStatistics?q=organizationalEntity&organizationalEntity=${enc}` +
-      `&timeIntervals.timeGranularityType=MONTH&timeIntervals.timeRange.start=${start}&timeIntervals.timeRange.end=${end}`,
-      token
-    )
+    "organizationPageStatistics — LIFETIME (sem timeIntervals)",
+    await httpGet(`https://api.linkedin.com/v2/organizationPageStatistics?q=organizationalEntity&organizationalEntity=${enc}`, token)
   );
   show(
-    "organizationalEntityShareStatistics (impressões/engajamento de conteúdo)",
-    await httpGet(
-      `https://api.linkedin.com/v2/organizationalEntityShareStatistics?q=organizationalEntity&organizationalEntity=${enc}` +
-      `&timeIntervals.timeGranularityType=MONTH&timeIntervals.timeRange.start=${start}&timeIntervals.timeRange.end=${end}`,
-      token
-    )
+    "organizationalEntityShareStatistics — LIFETIME (sem timeIntervals)",
+    await httpGet(`https://api.linkedin.com/v2/organizationalEntityShareStatistics?q=organizationalEntity&organizationalEntity=${enc}`, token)
   );
 
   await prisma.$disconnect();
