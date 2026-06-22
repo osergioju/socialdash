@@ -616,6 +616,42 @@ async function categorizeAndSaveThemes(clientId) {
 
 // ─── LINKEDIN ─────────────────────────────────────────────────────────────────
 
+// Taxonomia de funções do LinkedIn (lista fixa de 26 — urn:li:function:{id}).
+// Fonte: https://learn.microsoft.com/linkedin/shared/references/v2/standardized-data/functions
+const LI_FUNCTIONS = {
+  1: "Contabilidade", 2: "Administrativo", 3: "Artes e Design", 4: "Desenvolvimento de Negócios",
+  5: "Serviços Comunitários e Sociais", 6: "Consultoria", 7: "Educação", 8: "Engenharia",
+  9: "Empreendedorismo", 10: "Finanças", 11: "Serviços de Saúde", 12: "Recursos Humanos",
+  13: "Tecnologia da Informação", 14: "Jurídico", 15: "Marketing", 16: "Mídia e Comunicação",
+  17: "Forças Militares e de Proteção", 18: "Operações", 19: "Gestão de Produto",
+  20: "Gestão de Programas e Projetos", 21: "Compras", 22: "Garantia de Qualidade",
+  23: "Imobiliário", 24: "Pesquisa", 25: "Vendas", 26: "Suporte",
+};
+
+// Indústrias são centenas e mudam — busca os nomes na API e cacheia em memória.
+const _industryCache = new Map(); // id -> nome
+async function liIndustryName(token, urn) {
+  const id = String(urn || "").split(":").pop();
+  if (!id) return "Indústria desconhecida";
+  if (_industryCache.has(id)) return _industryCache.get(id);
+  const res = await httpGet(
+    `https://api.linkedin.com/v2/industries/${id}?locale=pt_BR`,
+    token
+  ).catch(() => null);
+  const nome =
+    res?.name?.localized?.pt_BR ||
+    res?.name?.localized?.en_US ||
+    (res?.name?.localized && Object.values(res.name.localized)[0]) ||
+    `Indústria ${id}`;
+  _industryCache.set(id, nome);
+  return nome;
+}
+
+function liFunctionName(urn) {
+  const id = parseInt(String(urn || "").split(":").pop(), 10);
+  return LI_FUNCTIONS[id] || (id ? `Função ${id}` : "Função desconhecida");
+}
+
 async function discoverLinkedinOrg(token) {
   const res = await httpGet(
     "https://api.linkedin.com/v2/organizationalEntityAcls?q=roleAssignee&role=ADMINISTRATOR&state=APPROVED&count=10",
@@ -739,7 +775,7 @@ async function syncLinkedin(clientId, conn) {
   if (followerStats.followerCountsByIndustry) {
     for (const ind of followerStats.followerCountsByIndustry.slice(0, 10)) {
       const indUrn = typeof ind.industry === "string" ? ind.industry : "";
-      const nome   = ind.industryName || (indUrn ? `Indústria ${indUrn.split(":").pop()}` : "Indústria desconhecida");
+      const nome   = ind.industryName || await liIndustryName(token, indUrn);
       const seg    = ind.followerCounts?.organicFollowerCount || 0;
       if (!seg) continue;
       let industry = await prisma.linkedinIndustry.findUnique({ where: { clientId_nome: { clientId, nome } } });
@@ -753,7 +789,7 @@ async function syncLinkedin(clientId, conn) {
   if (followerStats.followerCountsByFunction) {
     for (const fn of followerStats.followerCountsByFunction.slice(0, 10)) {
       const fnUrn = typeof fn.function === "string" ? fn.function : "";
-      const nome  = fn.functionName || (fnUrn ? `Função ${fnUrn.split(":").pop()}` : "Função desconhecida");
+      const nome  = fn.functionName || liFunctionName(fnUrn);
       const seg   = fn.followerCounts?.organicFollowerCount || 0;
       if (!seg) continue;
       let role = await prisma.linkedinRole.findUnique({ where: { clientId_nome: { clientId, nome } } });

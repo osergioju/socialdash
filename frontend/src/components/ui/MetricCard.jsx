@@ -24,7 +24,7 @@ export default function MetricCard({ title, value, variation, icon: Icon, color,
       <div style={{ fontSize: small ? 20 : 26, fontWeight: 700, color: C.text, fontFamily: "'DM Sans', sans-serif", lineHeight: 1.1 }}>
         {value ?? "—"}
       </div>
-      {variation != null && (
+      {variation != null && !Number.isNaN(Number(variation)) && (
         <div style={{ display: "flex", alignItems: "center", gap: 3, marginTop: 5 }}>
           {isPos ? <ArrowUpRight size={12} color={C.green} /> : <ArrowDownRight size={12} color={C.red} />}
           <span style={{ fontSize: 11, fontWeight: 600, color: isPos ? C.green : C.red }}>{isPos ? "+" : ""}{variation}%</span>
