@@ -682,79 +682,51 @@ async function syncLinkedin(clientId, conn) {
   const now = new Date();
   const LI_MONTHS_BACK = 12;
 
-  // ── Follower stats: apenas snapshot atual (API não suporta range histórico) ─
+  // ── Follower stats: recortes por indústria/função/região (snapshot atual) ──
   const followerRes = await httpGet(
     `https://api.linkedin.com/v2/organizationalEntityFollowerStatistics?q=organizationalEntity&organizationalEntity=${orgUrn}`,
     token
   ).catch(() => ({}));
   const followerStats = followerRes.elements?.[0] || {};
-  const currentSeguidores = followerStats.totalFollowerCount || 0;
-  const currentNovos      = followerStats.followerGains?.organicFollowerGain || 0;
 
-  // ── Page stats: 12 meses em UMA chamada com MONTH granularity ────────────
-  const rangeStart = new Date(now.getFullYear(), now.getMonth() - LI_MONTHS_BACK + 1, 1).getTime();
-  const rangeEnd   = new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime();
-
-  const pageStatsRes = await httpGet(
-    `https://api.linkedin.com/v2/organizationPageStatistics?q=organizationalEntity&organizationalEntity=${orgUrn}` +
-    `&timeIntervals.timeGranularityType=MONTH&timeIntervals.timeRange.start=${rangeStart}&timeIntervals.timeRange.end=${rangeEnd}`,
+  // ── Total de seguidores: vem do networkSizes (followerStatistics não traz total) ──
+  const netRes = await httpGet(
+    `https://api.linkedin.com/v2/networkSizes/${orgUrn}?edgeType=CompanyFollowedByMember`,
     token
   ).catch(() => ({}));
+  const currentSeguidores = netRes.firstDegreeSize || 0;
 
-  // ── Share stats: 12 meses em UMA chamada ─────────────────────────────────
+  // ── Share stats: somente LIFETIME é permitido neste tier (timeIntervals → 403).
+  //    organizationPageStatistics retorna 404 neste tier, então não é usado. ──
   const shareStatsRes = await httpGet(
-    `https://api.linkedin.com/v2/organizationalEntityShareStatistics?q=organizationalEntity&organizationalEntity=${orgUrn}` +
-    `&timeIntervals.timeGranularityType=MONTH&timeIntervals.timeRange.start=${rangeStart}&timeIntervals.timeRange.end=${rangeEnd}`,
+    `https://api.linkedin.com/v2/organizationalEntityShareStatistics?q=organizationalEntity&organizationalEntity=${orgUrn}`,
     token
   ).catch(() => ({}));
+  const share = shareStatsRes.elements?.[0]?.totalShareStatistics || {};
 
-  // Monta lookups por monthKey para acesso O(1)
-  const pageByMonth  = {};
-  for (const el of (pageStatsRes.elements || [])) {
-    const ts = el.timeRange?.start;
-    if (!ts) continue;
-    const d  = new Date(parseInt(ts));
-    pageByMonth[monthKey(d.getFullYear(), d.getMonth() + 1)] = el.totalPageStatistics || {};
-  }
+  const impressoes  = share.impressionCount       || 0;
+  const alcance     = share.uniqueImpressionsCount || 0;
+  const cliques     = share.clickCount            || 0;
+  const reacoes     = share.likeCount             || 0;
+  const comentarios = share.commentCount          || 0;
+  const compart     = share.shareCount            || 0;
+  // Engajamento = total de interações (curtidas + comentários + compartilhamentos + cliques)
+  const engajamento = reacoes + comentarios + compart + cliques;
 
-  const shareByMonth = {};
-  for (const el of (shareStatsRes.elements || [])) {
-    const ts = el.timeRange?.start;
-    if (!ts) continue;
-    const d  = new Date(parseInt(ts));
-    shareByMonth[monthKey(d.getFullYear(), d.getMonth() + 1)] = el.totalShareStatistics || {};
-  }
+  // ── Persiste APENAS o mês atual. A API só dá totais lifetime (não há série
+  //    histórica neste tier); o histórico mês-a-mês se constrói a cada sync. ──
+  const yr = now.getFullYear();
+  const mo = now.getMonth() + 1;
+  const mk = monthKey(yr, mo);
+  const ml = monthLabel(yr, mo);
 
-  // ── Persiste cada mês (do mais recente para o mais antigo) ───────────────
-  let previousFollowers = currentSeguidores;
-
-  for (let i = 0; i < LI_MONTHS_BACK; i++) {
-    const d     = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const yr    = d.getFullYear();
-    const mo    = d.getMonth() + 1;
-    const mk    = monthKey(yr, mo);
-    const ml    = monthLabel(yr, mo);
-    const isCurrent = i === 0;
-
-    const pageEl  = pageByMonth[mk]  || {};
-    const shareEl = shareByMonth[mk] || {};
-
-    const impressoes  = pageEl.views?.allPageViews?.pageViews     || 0;
-    const alcance     = pageEl.views?.allPageViews?.uniquePageViews || 0;
-    const engajamento = shareEl.totalEngagement || 0;
-    const cliques     = shareEl.clickCount      || 0;
-    const reacoes     = shareEl.likeCount       || 0;
-    const postagens   = shareEl.shareCount      || 0;
-
-    const seguidores     = previousFollowers;
-    const novosSeguidores = isCurrent ? currentNovos : 0;
-    previousFollowers    = Math.max(0, previousFollowers - novosSeguidores);
-
-    const liData = { monthLabel: ml, seguidores, novosSeguidores, alcance, impressoes, engajamento, cliques, reacoes, postagens };
-    const existingLi = await prisma.linkedinMetric.findUnique({ where: { clientId_month: { clientId, month: mk } } });
-    if (existingLi) await prisma.linkedinMetric.update({ where: { id: existingLi.id }, data: liData });
-    else            await prisma.linkedinMetric.create({ data: { clientId, month: mk, ...liData } });
-  }
+  const liData = {
+    monthLabel: ml, seguidores: currentSeguidores, novosSeguidores: 0,
+    alcance, impressoes, engajamento, cliques, reacoes, postagens: compart,
+  };
+  const existingLi = await prisma.linkedinMetric.findUnique({ where: { clientId_month: { clientId, month: mk } } });
+  if (existingLi) await prisma.linkedinMetric.update({ where: { id: existingLi.id }, data: liData });
+  else            await prisma.linkedinMetric.create({ data: { clientId, month: mk, ...liData } });
 
   // ── Geo, indústrias e funções (snapshot do mês atual apenas) ─────────────
   const currentMk = monthKey(now.getFullYear(), now.getMonth() + 1);
