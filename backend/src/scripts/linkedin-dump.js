@@ -106,17 +106,41 @@ async function main() {
     "v2/shares — posts da organização (legado, owners=List)",
     await httpGet(`https://api.linkedin.com/v2/shares?q=owners&owners=List(${enc})&sortBy=LAST_MODIFIED&count=10`, token)
   );
-  // versões do rest/* são mensais; usar uma recente e ativa
-  for (const ver of ["202506", "202504", "202412"]) {
+  const postsRes = await httpGet(
+    `https://api.linkedin.com/rest/posts?q=author&author=${enc}&count=5&sortBy=LAST_MODIFIED`,
+    token,
+    { "LinkedIn-Version": "202506" }
+  );
+  show("rest/posts (LinkedIn-Version: 202506)", postsRes);
+
+  // ── Engajamento POR POST: testar as duas formas ───────────────────────────
+  const firstPost = postsRes.body?.elements?.[0];
+  if (firstPost) {
+    const postUrn = firstPost.id;
+    const encPost = encodeURIComponent(postUrn);
+    console.log("\n>>> Testando engajamento do post:", postUrn);
+
     show(
-      `rest/posts — posts da organização (LinkedIn-Version: ${ver})`,
+      "A) rest/socialActions/{postUrn} — curtidas + comentários",
+      await httpGet(`https://api.linkedin.com/rest/socialActions/${encPost}`, token, { "LinkedIn-Version": "202506" })
+    );
+
+    const facet = postUrn.includes(":ugcPost:") ? "ugcPosts" : "shares";
+    show(
+      `B) organizationalEntityShareStatistics &${facet}=List(...) — stats por post`,
       await httpGet(
-        `https://api.linkedin.com/rest/posts?q=author&author=${enc}&count=10&sortBy=LAST_MODIFIED`,
+        `https://api.linkedin.com/rest/organizationalEntityShareStatistics?q=organizationalEntity&organizationalEntity=${enc}&${facet}=List(${encPost})`,
         token,
-        { "LinkedIn-Version": ver }
+        { "LinkedIn-Version": "202506" }
       )
     );
   }
+
+  // ── Resolver NOME de indústria (qual formato funciona?) ────────────────────
+  console.log("\n>>> Testando resolução de nome de indústria (id=59):");
+  show("C1) v2/industries/59?locale=pt_BR", await httpGet("https://api.linkedin.com/v2/industries/59?locale=pt_BR", token));
+  show("C2) rest/industries/59 (Version 202506)", await httpGet("https://api.linkedin.com/rest/industries/59", token, { "LinkedIn-Version": "202506" }));
+  show("C3) rest/industryTaxonomyV2/59 (Version 202506)", await httpGet("https://api.linkedin.com/rest/industryTaxonomyV2/59", token, { "LinkedIn-Version": "202506" }));
 
   await prisma.$disconnect();
 }
