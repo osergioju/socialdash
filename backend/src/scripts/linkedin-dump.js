@@ -54,7 +54,21 @@ async function main() {
     where: { clientId_platform: { clientId, platform: "LINKEDIN" } },
   });
   if (!conn || !conn.accessToken) {
-    console.error("Conexão LinkedIn não encontrada para este cliente.");
+    console.error(
+      conn
+        ? `Conexão LinkedIn existe (status=${conn.status}) mas SEM accessToken — reconecte o LinkedIn.`
+        : "Nenhuma conexão LinkedIn para este clientId."
+    );
+    console.error("\nConexões LinkedIn existentes no banco:");
+    const all = await prisma.platformConnection.findMany({
+      where: { platform: "LINKEDIN" },
+      select: { clientId: true, status: true, accountName: true, accessToken: true, metadata: true },
+    });
+    for (const c of all) {
+      let org = "";
+      try { org = c.metadata ? JSON.parse(c.metadata).organizationName : ""; } catch {}
+      console.error(`  clientId=${c.clientId} status=${c.status} token=${c.accessToken ? "sim" : "NÃO"} org="${org || c.accountName || "?"}"`);
+    }
     process.exit(1);
   }
 
@@ -87,18 +101,22 @@ async function main() {
   );
 
   // ── Sondas para LISTAR POSTS (necessário para o ranking de Temas) ──────────
+  // owners precisa do formato List(...) no protocolo Rest.li 2.0.0
   show(
-    "v2/shares — posts da organização (legado)",
-    await httpGet(`https://api.linkedin.com/v2/shares?q=owners&owners=${enc}&sortBy=LAST_MODIFIED&count=10`, token)
+    "v2/shares — posts da organização (legado, owners=List)",
+    await httpGet(`https://api.linkedin.com/v2/shares?q=owners&owners=List(${enc})&sortBy=LAST_MODIFIED&count=10`, token)
   );
-  show(
-    "rest/posts — posts da organização (API versionada)",
-    await httpGet(
-      `https://api.linkedin.com/rest/posts?q=author&author=${enc}&count=10&sortBy=LAST_MODIFIED`,
-      token,
-      { "LinkedIn-Version": "202401" }
-    )
-  );
+  // versões do rest/* são mensais; usar uma recente e ativa
+  for (const ver of ["202506", "202504", "202412"]) {
+    show(
+      `rest/posts — posts da organização (LinkedIn-Version: ${ver})`,
+      await httpGet(
+        `https://api.linkedin.com/rest/posts?q=author&author=${enc}&count=10&sortBy=LAST_MODIFIED`,
+        token,
+        { "LinkedIn-Version": ver }
+      )
+    );
+  }
 
   await prisma.$disconnect();
 }
