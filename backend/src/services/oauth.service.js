@@ -43,13 +43,13 @@ const PLATFORM_CONFIG = {
   LINKEDIN: {
     authUrl: "https://www.linkedin.com/oauth/v2/authorization",
     tokenUrl: "https://www.linkedin.com/oauth/v2/accessToken",
-    // openid+profile+email: disponíveis com "Sign In with LinkedIn" (OpenID Connect)
-    // r_organization_social+rw_organization_admin: requerem Community Management API aprovada
-    // LinkedIn rejeita o fluxo se algum escopo não estiver autorizado no app —
-    // enquanto a CMA não for aprovada, defina LINKEDIN_SCOPES="openid profile email" no .env
+    // App com Community Management API NÃO usa openid/profile/email — usa r_basicprofile
+    // para identificar o usuário, e os r_organization_* para métricas de página.
+    // LinkedIn rejeita o fluxo se algum escopo pedido não estiver autorizado no app;
+    // os escopos abaixo são os listados na aba Auth do app (CRT Devs / SocialDash).
     scopes: () =>
       process.env.LINKEDIN_SCOPES ||
-      "openid profile email r_organization_social rw_organization_admin",
+      "r_basicprofile r_organization_social rw_organization_admin r_organization_followers r_member_postAnalytics",
     clientId: () => process.env.LINKEDIN_CLIENT_ID,
     secret: () => process.env.LINKEDIN_CLIENT_SECRET,
     redirectPath: "/oauth/linkedin/callback",
@@ -154,10 +154,16 @@ async function fetchAccountInfo(platform, accessToken) {
       return { accountId: me.id, accountName: me.name, accountEmail: me.email };
     }
     if (platform === "LINKEDIN") {
-      // Usa endpoint OpenID Connect (userinfo) — funciona com scopes openid+profile+email
-      const me = await httpGet("https://api.linkedin.com/v2/userinfo", accessToken).catch(() => ({}));
-      const name = me.name || `${me.given_name || ""} ${me.family_name || ""}`.trim();
-      return { accountId: me.sub, accountName: name || null, accountEmail: me.email || null };
+      // App com Community Management API usa r_basicprofile → endpoint /v2/me.
+      // Fallback para /v2/userinfo (OpenID Connect) caso o app use scopes openid+profile+email.
+      const me = await httpGet("https://api.linkedin.com/v2/me", accessToken).catch(() => null);
+      if (me && me.id) {
+        const name = `${me.localizedFirstName || ""} ${me.localizedLastName || ""}`.trim();
+        return { accountId: me.id, accountName: name || null, accountEmail: null };
+      }
+      const oidc = await httpGet("https://api.linkedin.com/v2/userinfo", accessToken).catch(() => ({}));
+      const name = oidc.name || `${oidc.given_name || ""} ${oidc.family_name || ""}`.trim();
+      return { accountId: oidc.sub, accountName: name || null, accountEmail: oidc.email || null };
     }
   } catch {
     return {};
