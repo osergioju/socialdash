@@ -12,7 +12,7 @@ const https = require("https");
 const prisma = require("../config/prisma");
 const { decrypt } = require("../utils/crypto");
 
-function httpGet(url, token) {
+function httpGet(url, token, extraHeaders = {}) {
   return new Promise((resolve) => {
     const parsed = new URL(url);
     https
@@ -20,7 +20,7 @@ function httpGet(url, token) {
         {
           hostname: parsed.hostname,
           path: parsed.pathname + parsed.search,
-          headers: { Authorization: `Bearer ${token}`, "X-Restli-Protocol-Version": "2.0.0" },
+          headers: { Authorization: `Bearer ${token}`, "X-Restli-Protocol-Version": "2.0.0", ...extraHeaders },
         },
         (res) => {
           let raw = "";
@@ -84,6 +84,20 @@ async function main() {
   show(
     "organizationalEntityShareStatistics — LIFETIME (sem timeIntervals)",
     await httpGet(`https://api.linkedin.com/v2/organizationalEntityShareStatistics?q=organizationalEntity&organizationalEntity=${enc}`, token)
+  );
+
+  // ── Sondas para LISTAR POSTS (necessário para o ranking de Temas) ──────────
+  show(
+    "v2/shares — posts da organização (legado)",
+    await httpGet(`https://api.linkedin.com/v2/shares?q=owners&owners=${enc}&sortBy=LAST_MODIFIED&count=10`, token)
+  );
+  show(
+    "rest/posts — posts da organização (API versionada)",
+    await httpGet(
+      `https://api.linkedin.com/rest/posts?q=author&author=${enc}&count=10&sortBy=LAST_MODIFIED`,
+      token,
+      { "LinkedIn-Version": "202401" }
+    )
   );
 
   await prisma.$disconnect();
