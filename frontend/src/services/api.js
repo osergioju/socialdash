@@ -10,6 +10,12 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Páginas públicas: um 401 aqui NÃO deve forçar redirect para /login
+// (ex.: token velho expirado ao abrir a landing page "/"). Só limpamos o token
+// e deixamos a página pública seguir normalmente.
+const PUBLIC_PATHS = ["/", "/login", "/privacidade", "/oauth/callback"];
+const onPublicPath = () => PUBLIC_PATHS.includes(window.location.pathname);
+
 api.interceptors.response.use(
   (res) => res,
   (err) => {
@@ -19,10 +25,10 @@ api.interceptors.response.use(
         const slug = localStorage.getItem("client_slug") || "";
         localStorage.removeItem("client_token");
         localStorage.removeItem("client_slug");
-        window.location.href = `/c/${slug}/login`;
+        if (!onPublicPath()) window.location.href = `/c/${slug}/login`;
       } else {
         localStorage.removeItem("token");
-        window.location.href = "/login";
+        if (!onPublicPath()) window.location.href = "/login";
       }
     }
     return Promise.reject(err);
