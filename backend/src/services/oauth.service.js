@@ -9,6 +9,7 @@
 const jwt = require("jsonwebtoken");
 const https = require("https");
 const prisma = require("../config/prisma");
+const { userCanAccessClient } = require("../utils/teamAccess");
 const { encrypt, decrypt } = require("../utils/crypto");
 
 // ─── State JWT (short-lived, CSRF protection) ─────────────────────────────────
@@ -252,14 +253,14 @@ async function handleCallback(platform, code, stateToken) {
 }
 
 // ─── Revoke connection ─────────────────────────────────────────────────────────
-async function revokeConnection(clientId, platform, requestingUserId) {
+async function revokeConnection(clientId, platform, user) {
   const conn = await prisma.platformConnection.findUnique({
     where: { clientId_platform: { clientId, platform } },
     include: { client: { select: { createdById: true } } },
   });
 
   if (!conn) throw Object.assign(new Error("Conexão não encontrada"), { status: 404 });
-  if (conn.client.createdById !== requestingUserId) {
+  if (!(await userCanAccessClient(user, clientId))) {
     throw Object.assign(new Error("Sem permissão"), { status: 403 });
   }
 
@@ -309,13 +310,13 @@ async function listMetaPages(clientId) {
  * Salva a página Meta selecionada para este cliente.
  * Resolve o problema multi-tenant: cada cliente aponta para sua própria página.
  */
-async function selectMetaPage(clientId, pageId, requestingUserId) {
+async function selectMetaPage(clientId, pageId, user) {
   const conn = await prisma.platformConnection.findUnique({
     where: { clientId_platform: { clientId, platform: "META" } },
     include: { client: { select: { createdById: true } } },
   });
   if (!conn) throw Object.assign(new Error("Conexão Meta não encontrada"), { status: 404 });
-  if (conn.client.createdById !== requestingUserId) {
+  if (!(await userCanAccessClient(user, clientId))) {
     throw Object.assign(new Error("Sem permissão"), { status: 403 });
   }
 
@@ -392,13 +393,13 @@ async function listGa4Properties(clientId) {
   return properties;
 }
 
-async function selectGa4Property(clientId, propertyId, requestingUserId) {
+async function selectGa4Property(clientId, propertyId, user) {
   const conn = await prisma.platformConnection.findUnique({
     where: { clientId_platform: { clientId, platform: "GOOGLE_ANALYTICS" } },
     include: { client: { select: { createdById: true } } },
   });
   if (!conn) throw Object.assign(new Error("Conexão Google não encontrada"), { status: 404 });
-  if (conn.client.createdById !== requestingUserId) {
+  if (!(await userCanAccessClient(user, clientId))) {
     throw Object.assign(new Error("Sem permissão"), { status: 403 });
   }
 
@@ -459,13 +460,13 @@ async function listLinkedinOrgs(clientId) {
   return orgs;
 }
 
-async function selectLinkedinOrg(clientId, organizationUrn, requestingUserId) {
+async function selectLinkedinOrg(clientId, organizationUrn, user) {
   const conn = await prisma.platformConnection.findUnique({
     where: { clientId_platform: { clientId, platform: "LINKEDIN" } },
     include: { client: { select: { createdById: true } } },
   });
   if (!conn) throw Object.assign(new Error("Conexão LinkedIn não encontrada"), { status: 404 });
-  if (conn.client.createdById !== requestingUserId) {
+  if (!(await userCanAccessClient(user, clientId))) {
     throw Object.assign(new Error("Sem permissão"), { status: 403 });
   }
 

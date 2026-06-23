@@ -1,13 +1,11 @@
 const prisma = require("../config/prisma");
 const syncService = require("../services/sync.service");
 const { invalidateCache } = require("../services/metrics.service");
+const { userCanAccessClient } = require("../utils/teamAccess");
 
-async function verifyClientAccess(clientId, userId) {
-  const client = await prisma.client.findFirst({
-    where: { id: clientId, createdById: userId },
-    select: { id: true },
-  });
-  if (!client) {
+async function verifyClientAccess(clientId, user) {
+  const ok = await userCanAccessClient(user, clientId);
+  if (!ok) {
     throw Object.assign(new Error("Cliente não encontrado ou sem permissão"), { status: 403 });
   }
 }
@@ -21,7 +19,7 @@ async function triggerSync(req, res) {
   try {
     assertAgency(req);
     const { clientId } = req.params;
-    await verifyClientAccess(clientId, req.user.id);
+    await verifyClientAccess(clientId, req.user);
     const result = await syncService.syncClient(clientId);
     invalidateCache(clientId);
     res.json({ ok: true, result, syncedAt: new Date() });
@@ -34,7 +32,7 @@ async function getSyncStatus(req, res) {
   try {
     assertAgency(req);
     const { clientId } = req.params;
-    await verifyClientAccess(clientId, req.user.id);
+    await verifyClientAccess(clientId, req.user);
     const status = await syncService.getSyncStatus(clientId);
     res.json(status);
   } catch (err) {

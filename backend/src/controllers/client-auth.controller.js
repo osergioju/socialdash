@@ -1,14 +1,12 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const prisma = require("../config/prisma");
+const { userCanAccessClient } = require("../utils/teamAccess");
 
 // ── Verifica que a agência é dona do cliente ──────────────────────────────────
-async function assertOwnsClient(clientId, userId) {
-  const client = await prisma.client.findFirst({
-    where: { id: clientId, createdById: userId },
-    select: { id: true },
-  });
-  if (!client) throw Object.assign(new Error("Cliente não encontrado ou sem permissão"), { status: 403 });
+async function assertOwnsClient(clientId, user) {
+  const ok = await userCanAccessClient(user, clientId);
+  if (!ok) throw Object.assign(new Error("Cliente não encontrado ou sem permissão"), { status: 403 });
 }
 
 // ── POST /api/client-auth/login ───────────────────────────────────────────────
@@ -71,7 +69,7 @@ async function listUsers(req, res) {
   try {
     const { clientId } = req.query;
     if (!clientId) return res.status(400).json({ error: "clientId obrigatório" });
-    await assertOwnsClient(clientId, req.user.id);
+    await assertOwnsClient(clientId, req.user);
 
     const users = await prisma.clientUser.findMany({
       where: { clientId },
@@ -94,7 +92,7 @@ async function createUser(req, res) {
     if (password.length < 6) {
       return res.status(400).json({ error: "Senha deve ter no mínimo 6 caracteres" });
     }
-    await assertOwnsClient(clientId, req.user.id);
+    await assertOwnsClient(clientId, req.user);
 
     const hashed = await bcrypt.hash(password, 10);
     const user = await prisma.clientUser.create({
@@ -116,10 +114,10 @@ async function deleteUser(req, res) {
     const { userId } = req.params;
     const user = await prisma.clientUser.findUnique({
       where: { id: userId },
-      include: { client: { select: { createdById: true } } },
+      select: { id: true, clientId: true },
     });
     if (!user) return res.status(404).json({ error: "Usuário não encontrado" });
-    if (user.client.createdById !== req.user.id) {
+    if (!(await userCanAccessClient(req.user, user.clientId))) {
       return res.status(403).json({ error: "Sem permissão" });
     }
     await prisma.clientUser.delete({ where: { id: userId } });

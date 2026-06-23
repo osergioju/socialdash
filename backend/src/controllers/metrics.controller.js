@@ -1,6 +1,7 @@
 const prisma = require("../config/prisma");
 const metricsService = require("../services/metrics.service");
 const { categorizeAndSaveThemes } = require("../services/sync.service");
+const { userCanAccessClient } = require("../utils/teamAccess");
 
 
 async function verifyClientAccess(clientId, req) {
@@ -10,12 +11,9 @@ async function verifyClientAccess(clientId, req) {
       throw Object.assign(new Error("Sem permissão"), { status: 403 });
     }
   } else {
-    // Agency JWT: verify the requesting user owns this client
-    const client = await prisma.client.findFirst({
-      where: { id: clientId, createdById: req.user.id },
-      select: { id: true },
-    });
-    if (!client) {
+    // Agency JWT: verify the requesting user shares a team with this client
+    const ok = await userCanAccessClient(req.user, clientId);
+    if (!ok) {
       throw Object.assign(new Error("Cliente não encontrado ou sem permissão"), { status: 403 });
     }
   }

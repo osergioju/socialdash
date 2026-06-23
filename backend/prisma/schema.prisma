@@ -8,22 +8,49 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String
-  password  String
-  role      Role     @default(VIEWER)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  clients   Client[]
+  id          String           @id @default(cuid())
+  email       String           @unique
+  name        String
+  password    String
+  role        Role             @default(VIEWER)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  clients     Client[]
+  memberships TeamMembership[]
 
   @@map("users")
 }
 
 enum Role {
+  SUPER_ADMIN
   ADMIN
   EDITOR
   VIEWER
+}
+
+model Team {
+  id        String           @id @default(cuid())
+  name      String
+  slug      String           @unique
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  members   TeamMembership[]
+  clients   Client[]
+
+  @@map("teams")
+}
+
+model TeamMembership {
+  id        String   @id @default(cuid())
+  teamId    String
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([teamId, userId])
+  @@index([userId])
+  @@map("team_memberships")
 }
 
 // ─── Agency client management ─────────────────────────────────────────────────
@@ -37,6 +64,8 @@ model Client {
   notes              String?
   createdById        String
   createdBy          User                 @relation(fields: [createdById], references: [id])
+  teamId             String?
+  team               Team?                @relation(fields: [teamId], references: [id])
   connections        PlatformConnection[]
   clientUsers        ClientUser[]
   instagramMetrics   InstagramMetric[]
@@ -54,6 +83,7 @@ model Client {
   updatedAt          DateTime             @updatedAt
 
   @@index([createdById])
+  @@index([teamId])
   @@map("clients")
 }
 

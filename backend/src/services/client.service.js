@@ -1,4 +1,5 @@
 const prisma = require("../config/prisma");
+const { clientScopeWhere, userTeamIds } = require("../utils/teamAccess");
 
 function slugify(name) {
   return name
@@ -20,11 +21,12 @@ async function ensureUniqueSlug(base, excludeId = null) {
   }
 }
 
-async function listClients(userId) {
+async function listClients(user) {
   return prisma.client.findMany({
-    where: { createdById: userId },
+    where: clientScopeWhere(user),
     orderBy: { createdAt: "desc" },
     include: {
+      team: { select: { id: true, name: true } },
       connections: {
         select: { platform: true, status: true, accountName: true, connectedAt: true },
       },
@@ -32,9 +34,9 @@ async function listClients(userId) {
   });
 }
 
-async function getClient(id, userId) {
+async function getClient(id, user) {
   const client = await prisma.client.findFirst({
-    where: { id, createdById: userId },
+    where: { id, ...clientScopeWhere(user) },
     include: {
       connections: {
         select: {
@@ -78,7 +80,21 @@ async function getClient(id, userId) {
   return client;
 }
 
-async function createClient(data, userId) {
+async function createClient(data, user) {
+  // Define o time dono: se informado, valida acesso; senão usa o (único) time do usuário.
+  const teamIds = await userTeamIds(user.id);
+  let teamId = data.teamId || null;
+  if (teamId) {
+    if (user.role !== "SUPER_ADMIN" && !teamIds.includes(teamId)) {
+      throw Object.assign(new Error("Você não pertence a este time"), { status: 403 });
+    }
+  } else if (user.role !== "SUPER_ADMIN") {
+    if (teamIds.length === 0) throw Object.assign(new Error("Você não pertence a nenhum time"), { status: 400 });
+    if (teamIds.length > 1) throw Object.assign(new Error("Informe o time (teamId) para este cliente"), { status: 400 });
+    teamId = teamIds[0];
+  }
+  if (!teamId) throw Object.assign(new Error("Informe o time (teamId) para este cliente"), { status: 400 });
+
   const base = slugify(data.name);
   const slug = await ensureUniqueSlug(base);
   return prisma.client.create({
@@ -88,14 +104,15 @@ async function createClient(data, userId) {
       logoUrl:     data.logoUrl  || null,
       website:     data.website  || null,
       notes:       data.notes    || null,
-      createdById: userId,
+      createdById: user.id,
+      teamId,
     },
     include: { connections: true },
   });
 }
 
-async function updateClient(id, data, userId) {
-  const existing = await prisma.client.findFirst({ where: { id, createdById: userId } });
+async function updateClient(id, data, user) {
+  const existing = await prisma.client.findFirst({ where: { id, ...clientScopeWhere(user) } });
   if (!existing) throw Object.assign(new Error("Cliente não encontrado"), { status: 404 });
 
   const slug = data.name && data.name !== existing.name
@@ -115,8 +132,8 @@ async function updateClient(id, data, userId) {
   });
 }
 
-async function deleteClient(id, userId) {
-  const existing = await prisma.client.findFirst({ where: { id, createdById: userId } });
+async function deleteClient(id, user) {
+  const existing = await prisma.client.findFirst({ where: { id, ...clientScopeWhere(user) } });
   if (!existing) throw Object.assign(new Error("Cliente não encontrado"), { status: 404 });
   await prisma.client.delete({ where: { id } });
 }

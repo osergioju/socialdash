@@ -61,7 +61,7 @@ async function revoke(req, res) {
   if (!clientId) return res.status(400).json({ error: "clientId é obrigatório" });
 
   try {
-    await oauthService.revokeConnection(clientId, platform, req.user.id);
+    await oauthService.revokeConnection(clientId, platform, req.user);
     res.json({ ok: true });
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
@@ -91,7 +91,7 @@ async function selectMetaPage(req, res) {
     return res.status(400).json({ error: "clientId e pageId são obrigatórios" });
   }
   try {
-    const result = await oauthService.selectMetaPage(clientId, pageId, req.user.id);
+    const result = await oauthService.selectMetaPage(clientId, pageId, req.user);
     res.json({ ok: true, ...result });
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
@@ -118,7 +118,7 @@ async function selectGa4Property(req, res) {
     return res.status(400).json({ error: "clientId e propertyId são obrigatórios" });
   }
   try {
-    const result = await oauthService.selectGa4Property(clientId, propertyId, req.user.id);
+    const result = await oauthService.selectGa4Property(clientId, propertyId, req.user);
     res.json({ ok: true, ...result });
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
@@ -145,7 +145,7 @@ async function selectLinkedinOrg(req, res) {
     return res.status(400).json({ error: "clientId e organizationUrn são obrigatórios" });
   }
   try {
-    const result = await oauthService.selectLinkedinOrg(clientId, organizationUrn, req.user.id);
+    const result = await oauthService.selectLinkedinOrg(clientId, organizationUrn, req.user);
     res.json({ ok: true, ...result });
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });

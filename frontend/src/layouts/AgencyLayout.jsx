@@ -1,15 +1,16 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
-import { Users, LogOut, LayoutDashboard } from "lucide-react";
+import { Users, LogOut, LayoutDashboard, UsersRound } from "lucide-react";
 import { C } from "../utils/colors";
 import { useAuth } from "../contexts/AuthContext";
 
-const NAV = [
-  { to: "/clients", icon: Users, label: "Clientes" },
-];
-
 export default function AgencyLayout({ children }) {
   const { user, logout } = useAuth();
+
+  const NAV = [
+    { to: "/clients", icon: Users, label: "Clientes" },
+    ...(user?.role === "SUPER_ADMIN" ? [{ to: "/teams", icon: UsersRound, label: "Times" }] : []),
+  ];
 
   return (
     <div style={{ display: "flex", minHeight: "100vh", background: C.bg, fontFamily: "'DM Sans', sans-serif", color: C.text }}>

@@ -59,6 +59,18 @@ export const syncApi = {
   status:  (clientId) => api.get(`/sync/${clientId}/status`).then((r) => r.data),
 };
 
+export const teamsApi = {
+  list:          ()                 => api.get("/teams").then((r) => r.data),
+  users:         ()                 => api.get("/teams/users/all").then((r) => r.data),
+  get:           (id)               => api.get(`/teams/${id}`).then((r) => r.data),
+  create:        (name)             => api.post("/teams", { name }).then((r) => r.data),
+  update:        (id, name)         => api.patch(`/teams/${id}`, { name }).then((r) => r.data),
+  remove:        (id)               => api.delete(`/teams/${id}`).then((r) => r.data),
+  addMember:     (id, userId)       => api.post(`/teams/${id}/members`, { userId }).then((r) => r.data),
+  removeMember:  (id, userId)       => api.delete(`/teams/${id}/members/${userId}`).then((r) => r.data),
+  setClientTeam: (clientId, teamId) => api.put(`/teams/clients/${clientId}`, { teamId }).then((r) => r.data),
+};
+
 // ─── Client-user auth endpoints ───────────────────────────────────────────────
 export const clientAuthApi = {
   login: (data) => api.post("/client-auth/login", data).then((r) => r.data),

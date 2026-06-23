@@ -10,6 +10,7 @@ const clientRoutes = require("./routes/client.routes");
 const oauthRoutes = require("./routes/oauth.routes");
 const syncRoutes = require("./routes/sync.routes");
 const clientAuthRoutes = require("./routes/client-auth.routes");
+const teamRoutes = require("./routes/team.routes");
 const { startScheduler } = require("./services/scheduler.service");
 
 const app = express();
@@ -61,6 +62,7 @@ app.use("/api/clients", clientRoutes);
 app.use("/api/oauth", oauthRoutes);
 app.use("/api/sync", syncRoutes);
 app.use("/api/client-auth", clientAuthRoutes);
+app.use("/api/teams", teamRoutes);
 
 // ─── HEALTH CHECK ────────────────────────────────────────────────────────────
 app.get("/api/health", (_, res) =>

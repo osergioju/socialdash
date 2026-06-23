@@ -6,6 +6,7 @@ import PrivateRoute            from "./components/PrivateRoute";
 import ClientPrivateRoute      from "./components/ClientPrivateRoute";
 import LoginPage               from "./pages/LoginPage";
 import ClientsPage             from "./pages/ClientsPage";
+import TeamsPage               from "./pages/TeamsPage";
 import ClientDetailPage        from "./pages/ClientDetailPage";
 import DashboardPage           from "./pages/DashboardPage";
 import OAuthCallbackPage       from "./pages/OAuthCallbackPage";
@@ -26,6 +27,7 @@ export default function App() {
           {/* Área da agência */}
           <Route path="/" element={<Navigate to="/clients" replace />} />
           <Route path="/clients"               element={<PrivateRoute><ClientsPage /></PrivateRoute>} />
+          <Route path="/teams"                 element={<PrivateRoute><TeamsPage /></PrivateRoute>} />
           <Route path="/clients/:id"           element={<PrivateRoute><ClientDetailPage /></PrivateRoute>} />
           <Route path="/clients/:id/dashboard" element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
 
