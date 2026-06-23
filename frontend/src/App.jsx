@@ -4,6 +4,7 @@ import { AuthProvider }        from "./contexts/AuthContext";
 import { ClientAuthProvider }  from "./contexts/ClientAuthContext";
 import PrivateRoute            from "./components/PrivateRoute";
 import ClientPrivateRoute      from "./components/ClientPrivateRoute";
+import LandingPage            from "./pages/LandingPage";
 import LoginPage               from "./pages/LoginPage";
 import ClientsPage             from "./pages/ClientsPage";
 import TeamsPage               from "./pages/TeamsPage";
@@ -19,13 +20,13 @@ export default function App() {
     <AuthProvider>
       <ClientAuthProvider>
         <Routes>
-          {/* Público — agência */}
+          {/* Público — homepage (LP exigida pela verificação Google: pública, explica o app, login via clique) */}
+          <Route path="/"               element={<LandingPage />} />
           <Route path="/login"          element={<LoginPage />} />
           <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
           <Route path="/privacidade"    element={<PrivacyPolicyPage />} />
 
           {/* Área da agência */}
-          <Route path="/" element={<Navigate to="/clients" replace />} />
           <Route path="/clients"               element={<PrivateRoute><ClientsPage /></PrivateRoute>} />
           <Route path="/teams"                 element={<PrivateRoute><TeamsPage /></PrivateRoute>} />
           <Route path="/clients/:id"           element={<PrivateRoute><ClientDetailPage /></PrivateRoute>} />
