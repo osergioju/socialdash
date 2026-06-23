@@ -203,6 +203,15 @@ async function handleCallback(platform, code, stateToken) {
   }
 
   let accessToken = tokenRes.access_token;
+
+  // Sem access_token = falha de troca (resposta não-JSON, escopo recusado, etc.).
+  // Sem isso, encrypt(undefined) salvaria a conexão como CONNECTED com token null,
+  // e depois listLinkedinOrgs/sync diriam "Conexão não encontrada para este cliente".
+  if (!accessToken) {
+    const detail = typeof tokenRes === "string" ? tokenRes.slice(0, 200) : JSON.stringify(tokenRes).slice(0, 200);
+    throw Object.assign(new Error(`Token não retornado por ${platform}: ${detail}`), { status: 400 });
+  }
+
   const refreshToken = tokenRes.refresh_token || null;
   let expiresIn = tokenRes.expires_in; // seconds
 
