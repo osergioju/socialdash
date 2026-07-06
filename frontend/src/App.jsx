@@ -14,6 +14,10 @@ import OAuthCallbackPage       from "./pages/OAuthCallbackPage";
 import ClientLoginPage         from "./pages/ClientLoginPage";
 import ClientDashboardPage     from "./pages/ClientDashboardPage";
 import PrivacyPolicyPage       from "./pages/PrivacyPolicyPage";
+import CampaignsPage           from "./pages/CampaignsPage";
+import CampaignDashboardPage   from "./pages/CampaignDashboardPage";
+import ListeningPage           from "./pages/ListeningPage";
+import ListeningDashboardPage  from "./pages/ListeningDashboardPage";
 
 export default function App() {
   return (
@@ -31,6 +35,10 @@ export default function App() {
           <Route path="/teams"                 element={<PrivateRoute><TeamsPage /></PrivateRoute>} />
           <Route path="/clients/:id"           element={<PrivateRoute><ClientDetailPage /></PrivateRoute>} />
           <Route path="/clients/:id/dashboard" element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
+          <Route path="/campaigns"             element={<PrivateRoute><CampaignsPage /></PrivateRoute>} />
+          <Route path="/campaigns/:id"         element={<PrivateRoute><CampaignDashboardPage /></PrivateRoute>} />
+          <Route path="/listening"             element={<PrivateRoute><ListeningPage /></PrivateRoute>} />
+          <Route path="/listening/:id"         element={<PrivateRoute><ListeningDashboardPage /></PrivateRoute>} />
 
           {/* Área do cliente final */}
           <Route path="/c/:slug/login" element={<ClientLoginPage />} />

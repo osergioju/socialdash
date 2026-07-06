@@ -77,6 +77,37 @@ export const teamsApi = {
   setClientTeam: (clientId, teamId) => api.put(`/teams/clients/${clientId}`, { teamId }).then((r) => r.data),
 };
 
+// ─── Campanhas ────────────────────────────────────────────────────────────────
+export const campaignsApi = {
+  list:            (clientId)            => api.get("/campaigns", { params: { clientId } }).then((r) => r.data),
+  get:             (id)                  => api.get(`/campaigns/${id}`).then((r) => r.data),
+  create:          (clientId, data)      => api.post("/campaigns", data, { params: { clientId } }).then((r) => r.data),
+  update:          (id, data)            => api.patch(`/campaigns/${id}`, data).then((r) => r.data),
+  remove:          (id)                  => api.delete(`/campaigns/${id}`).then((r) => r.data),
+  setChannels:     (id, channels)        => api.put(`/campaigns/${id}/channels`, { channels }).then((r) => r.data),
+  assetsInstagram: (id, q)               => api.get(`/campaigns/${id}/assets/instagram`, { params: { q: q || undefined } }).then((r) => r.data),
+  assetsLinkedin:  (id, q)               => api.get(`/campaigns/${id}/assets/linkedin`,  { params: { q: q || undefined } }).then((r) => r.data),
+  assetsPages:     (id, q)               => api.get(`/campaigns/${id}/assets/pages`,     { params: { q: q || undefined } }).then((r) => r.data),
+  setPosts:        (id, channel, posts)  => api.put(`/campaigns/${id}/posts`, { channel, posts }).then((r) => r.data),
+  setPages:        (id, pages)           => api.put(`/campaigns/${id}/pages`, { pages }).then((r) => r.data),
+  dashboard:       (id)                  => api.get(`/campaigns/${id}/dashboard`).then((r) => r.data),
+  aiInsights:      (id, force)           => api.get(`/campaigns/${id}/ai-insights`, { params: { force: force || undefined } }).then((r) => r.data),
+};
+
+// ─── Social Listening ─────────────────────────────────────────────────────────
+export const listeningApi = {
+  list:       (clientId)       => api.get("/listening", { params: { clientId } }).then((r) => r.data),
+  get:        (id)             => api.get(`/listening/${id}`).then((r) => r.data),
+  create:     (clientId, data) => api.post("/listening", data, { params: { clientId } }).then((r) => r.data),
+  update:     (id, data)       => api.patch(`/listening/${id}`, data).then((r) => r.data),
+  remove:     (id)             => api.delete(`/listening/${id}`).then((r) => r.data),
+  setSources: (id, sources)    => api.put(`/listening/${id}/sources`, { sources }).then((r) => r.data),
+  collect:    (id)             => api.post(`/listening/${id}/collect`).then((r) => r.data),
+  mentions:   (id, params)     => api.get(`/listening/${id}/mentions`, { params }).then((r) => r.data),
+  dashboard:  (id, days)       => api.get(`/listening/${id}/dashboard`, { params: { days: days || undefined } }).then((r) => r.data),
+  summary:    (id, period, force) => api.get(`/listening/${id}/summary`, { params: { period, force: force || undefined } }).then((r) => r.data),
+};
+
 // ─── Client-user auth endpoints ───────────────────────────────────────────────
 export const clientAuthApi = {
   login: (data) => api.post("/client-auth/login", data).then((r) => r.data),

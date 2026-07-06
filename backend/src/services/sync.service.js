@@ -1129,4 +1129,8 @@ async function getSyncStatus(clientId) {
   });
 }
 
-module.exports = { syncClient, getSyncStatus, categorizeAndSaveThemes, getValidToken };
+module.exports = {
+  syncClient, getSyncStatus, categorizeAndSaveThemes, getValidToken,
+  // Helpers reutilizados por outros módulos (ex.: Campanhas)
+  httpGet, httpPost, fetchLinkedinPosts, fetchLinkedinPostStats, IG_API_VERSION, LI_VERSION,
+};
