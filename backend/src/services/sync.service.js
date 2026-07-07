@@ -134,6 +134,10 @@ async function refreshGoogleToken(conn) {
     console.error("[ga4/refresh] FALHA: conn.refreshToken é null — usuário precisa reconectar o GA4");
     throw new Error("Sem refresh_token para GA4 — reconecte a integração");
   }
+  if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+    console.error("[ga4/refresh] FALHA: GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET vazios no .env");
+    throw new Error("GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET não configurados no .env deste ambiente");
+  }
   const refreshToken = decrypt(conn.refreshToken);
   console.log("[ga4/refresh] Renovando access_token via refresh_token...");
   const res = await httpPostForm("https://oauth2.googleapis.com/token", {
