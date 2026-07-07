@@ -124,7 +124,11 @@ async function assetsLinkedin(req, res) {
 
 async function assetsPages(req, res) {
   try {
-    const items = await campaignService.getAvailablePages(req.params.id, { user: req.user, clientUser: req.clientUser }, { q: req.query.q });
+    const items = await campaignService.getAvailablePages(
+      req.params.id,
+      { user: req.user, clientUser: req.clientUser },
+      { q: req.query.q, from: req.query.from, to: req.query.to }
+    );
     res.json(items);
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });

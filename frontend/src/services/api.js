@@ -87,7 +87,7 @@ export const campaignsApi = {
   setChannels:     (id, channels)        => api.put(`/campaigns/${id}/channels`, { channels }).then((r) => r.data),
   assetsInstagram: (id, q)               => api.get(`/campaigns/${id}/assets/instagram`, { params: { q: q || undefined } }).then((r) => r.data),
   assetsLinkedin:  (id, q)               => api.get(`/campaigns/${id}/assets/linkedin`,  { params: { q: q || undefined } }).then((r) => r.data),
-  assetsPages:     (id, q)               => api.get(`/campaigns/${id}/assets/pages`,     { params: { q: q || undefined } }).then((r) => r.data),
+  assetsPages:     (id, params)          => api.get(`/campaigns/${id}/assets/pages`,     { params }).then((r) => r.data),
   setPosts:        (id, channel, posts)  => api.put(`/campaigns/${id}/posts`, { channel, posts }).then((r) => r.data),
   setPages:        (id, pages)           => api.put(`/campaigns/${id}/pages`, { pages }).then((r) => r.data),
   dashboard:       (id)                  => api.get(`/campaigns/${id}/dashboard`).then((r) => r.data),

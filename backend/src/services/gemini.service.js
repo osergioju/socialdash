@@ -158,67 +158,90 @@ async function callGroqJson(prompt, maxTokens = 2048, temperature = 0.35) {
   return JSON.parse(clean);
 }
 
-// ─── Campanhas: insights consolidados de uma campanha ─────────────────────────
+// ─── Campanhas: insights sobre os conteúdos vinculados à campanha ─────────────
+// A análise usa EXCLUSIVAMENTE os ativos vinculados (posts selecionados +
+// páginas selecionadas), respondendo às perguntas-chave da campanha.
 async function generateCampaignInsights({ campaign, dashboard }) {
   const { website, instagram, linkedin, consolidado } = dashboard;
 
+  const MEDIA_LABEL = { IMAGE: "Feed", CAROUSEL_ALBUM: "Carrossel", REEL: "Reel", VIDEO: "Vídeo" };
+
+  // Breakdown de formatos do Instagram (Reel, Feed, Carrossel, Vídeo)
+  let formatosBlock = "";
+  if (instagram?.posts?.length) {
+    const byFormat = {};
+    for (const p of instagram.posts) {
+      const f = MEDIA_LABEL[p.mediaType] || p.mediaType || "Outro";
+      if (!byFormat[f]) byFormat[f] = { count: 0, reach: 0, engagement: 0 };
+      byFormat[f].count++;
+      byFormat[f].reach += p.metrics?.reach ?? 0;
+      byFormat[f].engagement += (p.metrics?.likes ?? 0) + (p.metrics?.comments ?? 0) + (p.metrics?.shares ?? 0) + (p.metrics?.saved ?? 0);
+    }
+    formatosBlock = `
+## Formatos (Instagram)
+${Object.entries(byFormat).map(([f, s]) => `- ${f}: ${s.count} post(s), alcance total ${s.reach}, engajamento total ${s.engagement}`).join("\n")}
+`;
+  }
+
   const igBlock = instagram ? `
-## Instagram (${instagram.postsCount} posts na campanha)
+## Instagram (${instagram.postsCount} posts vinculados)
 - Alcance total: ${instagram.totals.reach} | Impressões/plays: ${instagram.totals.impressions}
 - Curtidas: ${instagram.totals.likes} | Comentários: ${instagram.totals.comments}
 - Compartilhamentos: ${instagram.totals.shares} | Salvamentos: ${instagram.totals.saved}
 - Engajamento total: ${instagram.totals.engagement}
-- Top posts: ${(instagram.posts || []).slice(0, 5).map((p) => `"${(p.caption || "").slice(0, 50).replace(/\n/g, " ")}" (alcance ${p.metrics?.reach ?? 0}, curtidas ${p.metrics?.likes ?? 0}, comentários ${p.metrics?.comments ?? 0})`).join("; ")}
+- Posts (formato | legenda | métricas): ${(instagram.posts || []).slice(0, 8).map((p) => `[${MEDIA_LABEL[p.mediaType] || p.mediaType}] "${(p.caption || "").slice(0, 50).replace(/\n/g, " ")}" (alcance ${p.metrics?.reach ?? 0}, curtidas ${p.metrics?.likes ?? 0}, comentários ${p.metrics?.comments ?? 0})`).join("; ")}
 ` : "";
 
   const liBlock = linkedin ? `
-## LinkedIn (${linkedin.postsCount} publicações na campanha)
+## LinkedIn (${linkedin.postsCount} publicações vinculadas)
 - Impressões: ${linkedin.totals.impressions} | Alcance: ${linkedin.totals.reach}
 - Reações: ${linkedin.totals.reactions} | Comentários: ${linkedin.totals.comments}
 - Cliques: ${linkedin.totals.clicks} | CTR: ${linkedin.totals.ctr}%
 - Engajamento total: ${linkedin.totals.engagement}
-- Top publicações: ${(linkedin.posts || []).slice(0, 5).map((p) => `"${(p.caption || "").slice(0, 50).replace(/\n/g, " ")}" (impressões ${p.metrics?.impressions ?? 0}, reações ${p.metrics?.reactions ?? 0})`).join("; ")}
+- Publicações: ${(linkedin.posts || []).slice(0, 8).map((p) => `"${(p.caption || "").slice(0, 50).replace(/\n/g, " ")}" (impressões ${p.metrics?.impressions ?? 0}, reações ${p.metrics?.reactions ?? 0}, cliques ${p.metrics?.clicks ?? 0})`).join("; ")}
 ` : "";
 
   const gaBlock = website ? `
-## Website / GA4 (${website.pagesCount} páginas vinculadas, período da campanha)
+## Website / GA4 (${website.pagesCount} páginas vinculadas, dados do período da campanha)
 - Sessões: ${website.totals.sessions} | Usuários: ${website.totals.users} (novos: ${website.totals.newUsers})
 - Visualizações: ${website.totals.views} | Tempo médio: ${website.totals.avgEngagementTime}s
 - Eventos: ${website.totals.events} | Conversões: ${website.totals.conversions}
 - Taxa de engajamento: ${website.totals.engagementRate}%
+- Por página: ${(website.pages || []).slice(0, 10).map((p) => `${p.pagePath} (views ${p.views}, sessões ${p.sessions}, usuários ${p.users})`).join("; ")}
+- Evolução diária (sessões): ${(website.timeseries || []).map((t) => `${t.date}:${t.sessions}`).join(", ")}
 ` : "";
 
-  const prompt = `Você é um analista sênior de marketing digital. Analise a campanha "${campaign.name}" do cliente "${campaign.clientName}" e gere um relatório em português brasileiro.
+  const prompt = `Você é um analista sênior de marketing digital. A campanha "${campaign.name}" do cliente "${campaign.clientName}" é um AGRUPAMENTO de conteúdos já publicados — analise SOMENTE os ativos vinculados abaixo e responda em português brasileiro.
 
 Campanha: ${campaign.name}
 Objetivo: ${campaign.objective || "não informado"}
 Período: ${campaign.startDate} a ${campaign.endDate}
-Status: ${campaign.status}
-Canais: ${(campaign.channels || []).join(", ") || "nenhum"}
-${igBlock}${liBlock}${gaBlock}
+Canais com conteúdos vinculados: ${(campaign.channels || []).join(", ") || "nenhum"}
+${igBlock}${liBlock}${gaBlock}${formatosBlock}
 ## Consolidado
 - Alcance total: ${consolidado?.totalReach ?? 0} | Impressões totais: ${consolidado?.totalImpressions ?? 0}
 - Engajamento total: ${consolidado?.totalEngagement ?? 0} | Cliques totais: ${consolidado?.totalClicks ?? 0}
 
 Retorne APENAS um JSON válido (sem markdown) com esta estrutura:
 {
-  "resumoExecutivo": "parágrafo de 3-5 frases resumindo a performance geral com números reais",
-  "melhorCanal": { "canal": "instagram|linkedin|website", "motivo": "1-2 frases com números" },
-  "oQueFuncionou": ["item com números reais", "..."],
-  "melhorPostagem": { "canal": "instagram|linkedin", "descricao": "trecho da legenda + números", "motivo": "por que performou" },
-  "abaixoDaMedia": ["conteúdo/aspecto que performou abaixo, com números", "..."],
-  "sugestoesProximasCampanhas": ["sugestão acionável", "..."],
-  "temasSugeridos": ["tema 1", "tema 2", "tema 3"],
-  "tomDeComunicacao": "tom identificado nos conteúdos (1-2 frases)",
-  "pontosFortes": ["ponto forte", "..."],
-  "pontosDeMelhoria": ["ponto de melhoria", "..."]
+  "resumoExecutivo": "parágrafo de 3-5 frases resumindo a performance da campanha com números reais",
+  "melhorPublicacao": { "canal": "instagram|linkedin", "descricao": "trecho da legenda + números", "motivo": "por que teve o melhor desempenho" },
+  "canalMaiorEngajamento": { "canal": "instagram|linkedin|website", "motivo": "1-2 frases com números" },
+  "paginaMaisVisitada": { "pagina": "/caminho", "analise": "números e leitura do resultado" },
+  "trafegoParaOSite": "análise de como os conteúdos se relacionaram com o tráfego do site no período (dias de pico vs datas de publicação)",
+  "crescimentoNoPeriodo": "houve crescimento durante a campanha? compare início e fim do período com números",
+  "temasComMelhorAceitacao": ["tema identificado nos conteúdos com melhor resposta", "..."],
+  "formatosQuePerformaram": ["Reel — análise com números", "Carrossel — ...", "..."],
+  "aprendizados": ["aprendizado acionável para a próxima campanha", "..."],
+  "sugestoesProximaCampanha": ["sugestão concreta", "..."]
 }
 
 Regras:
-- Use apenas canais com dados disponíveis
+- Analise APENAS os conteúdos vinculados listados acima
 - Cite números reais dos dados fornecidos
-- Arrays com 3-5 itens cada
-- Se não houver dados suficientes em algum campo, retorne um item explicando o que falta`;
+- Arrays com 2-5 itens cada
+- Se um canal não tem conteúdos vinculados, retorne null no campo correspondente (ex: paginaMaisVisitada: null se não há páginas)
+- Se não houver dados suficientes, explique o que falta no próprio campo`;
 
   return callGroqJson(prompt, 2500);
 }

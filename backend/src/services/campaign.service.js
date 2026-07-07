@@ -284,26 +284,59 @@ async function getAvailableLinkedin(id, user, { q } = {}) {
   return items;
 }
 
-// Website: páginas conhecidas do GA4 (tabela ga4_pages, alimentada pelo sync).
-async function getAvailablePages(id, user, { q } = {}) {
+// Website: páginas disponíveis direto do GA4, dentro do período informado
+// (default: período da campanha). Nada é criado — apenas listado para seleção.
+async function getAvailablePages(id, user, { q, from, to } = {}) {
   const campaign = await getCampaignScoped(id, user);
   const conn = await getConnection(campaign.clientId, "GOOGLE_ANALYTICS");
   if (!conn || conn.status !== "CONNECTED") {
     throw Object.assign(new Error("Integração Google Analytics não conectada para este cliente"), { status: 400 });
   }
-  const pages = await prisma.ga4Page.findMany({
-    where: {
-      clientId: campaign.clientId,
-      ...(q ? { pagina: { contains: q, mode: "insensitive" } } : {}),
-    },
-    include: { metrics: { orderBy: { month: "desc" }, take: 1 } },
-    orderBy: { pagina: "asc" },
-  });
-  return pages.map((p) => ({
-    pagePath:   p.pagina,
-    label:      p.label,
-    lastViews:  p.metrics[0]?.views ?? null,
-  }));
+  const meta = conn.metadata ? JSON.parse(conn.metadata) : {};
+  if (!meta.propertyId) {
+    throw Object.assign(new Error("Propriedade GA4 não selecionada na conexão"), { status: 400 });
+  }
+
+  const startDate = from || toDateOnly(campaign.startDate);
+  let endDate = to || toDateOnly(campaign.endDate);
+  if (endDate !== "today" && new Date(endDate) > new Date()) endDate = "today";
+
+  const cacheKey = `campaign:assets:pages:${campaign.clientId}:${startDate}:${endDate}`;
+  let items = cacheGet(cacheKey);
+
+  if (!items) {
+    const token = await getValidToken(conn);
+    const report = await httpPost(
+      `https://analyticsdata.googleapis.com/v1beta/${meta.propertyId}:runReport`,
+      token,
+      {
+        dateRanges: [{ startDate, endDate }],
+        dimensions: [{ name: "pagePath" }, { name: "pageTitle" }],
+        metrics: [{ name: "screenPageViews" }, { name: "activeUsers" }, { name: "sessions" }],
+        orderBys: [{ metric: { metricName: "screenPageViews" }, desc: true }],
+        limit: 250,
+      }
+    );
+    if (report.error) {
+      throw Object.assign(new Error(`GA4 API: ${report.error.message || report.error.status}`), { status: 502 });
+    }
+    items = (report.rows || []).map((row) => ({
+      pagePath: row.dimensionValues?.[0]?.value || "/",
+      label:    row.dimensionValues?.[1]?.value || null, // título da página
+      views:    Math.round(parseFloat(row.metricValues?.[0]?.value || "0")),
+      users:    Math.round(parseFloat(row.metricValues?.[1]?.value || "0")),
+      sessions: Math.round(parseFloat(row.metricValues?.[2]?.value || "0")),
+    }));
+    cacheSet(cacheKey, items);
+  }
+
+  if (q) {
+    const needle = q.toLowerCase();
+    items = items.filter((i) =>
+      i.pagePath.toLowerCase().includes(needle) || (i.label || "").toLowerCase().includes(needle)
+    );
+  }
+  return items;
 }
 
 // ─── Associação de conteúdos e páginas ────────────────────────────────────────
@@ -605,11 +638,11 @@ async function getDashboard(id, user) {
     prisma.campaignPage.findMany({ where: { campaignId: id } }),
   ]);
 
-  const channelSet = new Set(campaign.channels.map((c) => c.channel));
-
-  const instagram = channelSet.has("INSTAGRAM") ? aggregateChannelPosts(posts, "INSTAGRAM") : null;
-  const linkedin  = channelSet.has("LINKEDIN")  ? aggregateChannelPosts(posts, "LINKEDIN")  : null;
-  const website   = channelSet.has("WEBSITE")
+  // A campanha é um agrupador: o dashboard usa EXCLUSIVAMENTE os conteúdos
+  // vinculados — cada seção só existe se houver ativos daquele canal.
+  const instagram = aggregateChannelPosts(posts, "INSTAGRAM");
+  const linkedin  = aggregateChannelPosts(posts, "LINKEDIN");
+  const website   = pages.length > 0
     ? await fetchCampaignGa4(campaign, pages).catch((e) => {
         console.warn(`[campaign] GA4 dashboard falhou (campaign=${id}):`, e.message);
         return null;
@@ -649,6 +682,9 @@ async function getDashboard(id, user) {
     totalImpressions: byChannel.reduce((s, c) => s + c.impressions, 0),
     totalEngagement:  byChannel.reduce((s, c) => s + c.engagement, 0),
     totalClicks:      byChannel.reduce((s, c) => s + c.clicks, 0),
+    websiteUsers:       website?.totals.users       ?? 0,
+    websiteSessions:    website?.totals.sessions    ?? 0,
+    websiteConversions: website?.totals.conversions ?? 0,
     byChannel: byChannel.map((c) => ({
       ...c,
       engagementShare: 0, // calculado abaixo
@@ -659,6 +695,29 @@ async function getDashboard(id, user) {
       ? +((c.engagement / consolidado.totalEngagement) * 100).toFixed(1)
       : 0;
   }
+
+  // Funil de aquisição: do alcance nas redes até conversões no site
+  consolidado.funnel = [
+    { stage: "Alcance",     value: consolidado.totalReach },
+    { stage: "Impressões",  value: consolidado.totalImpressions },
+    { stage: "Engajamento", value: consolidado.totalEngagement },
+    { stage: "Cliques",     value: consolidado.totalClicks },
+    ...(website ? [
+      { stage: "Sessões no site", value: website.totals.sessions },
+      { stage: "Conversões",      value: website.totals.conversions },
+    ] : []),
+  ];
+
+  // Distribuição do engajamento por tipo de interação (soma dos canais)
+  const igT = instagram?.totals, liT = linkedin?.totals;
+  consolidado.engagementBreakdown = [
+    { tipo: "Curtidas",          valor: (igT?.likes    ?? 0) },
+    { tipo: "Reações",           valor: (liT?.reactions ?? 0) },
+    { tipo: "Comentários",       valor: (igT?.comments ?? 0) + (liT?.comments ?? 0) },
+    { tipo: "Compartilhamentos", valor: (igT?.shares   ?? 0) + (liT?.shares   ?? 0) },
+    { tipo: "Salvamentos",       valor: (igT?.saved    ?? 0) },
+    { tipo: "Cliques",           valor: (igT?.clicks   ?? 0) + (liT?.clicks   ?? 0) },
+  ].filter((e) => e.valor > 0);
 
   // ── Timeline consolidada (por dia, todos os canais) ─────────────────────────
   const timeline = {};
@@ -685,7 +744,8 @@ async function getDashboard(id, user) {
       objective: campaign.objective,
       tags: campaign.tags,
       responsible: campaign.responsible,
-      channels: campaign.channels.map((c) => c.channel),
+      // Canais derivados dos conteúdos vinculados (não de configuração)
+      channels: byChannel.map((c) => c.channel),
       clientId: campaign.clientId,
       clientName: campaign.client?.name,
     },
@@ -726,8 +786,7 @@ async function getAiInsights(id, user, forceRegenerate = false) {
       objective:  campaign.objective,
       startDate:  toDateOnly(campaign.startDate),
       endDate:    toDateOnly(campaign.endDate),
-      status:     campaign.status,
-      channels:   campaign.channels.map((c) => c.channel),
+      channels:   dashboard.consolidado.byChannel.map((c) => c.channel),
     },
     dashboard,
   });

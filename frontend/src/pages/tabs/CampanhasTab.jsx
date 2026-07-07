@@ -1,27 +1,19 @@
 import React, { useState } from "react";
-import { Plus, Megaphone, Trash2, Pencil, Calendar, User, ChevronRight } from "lucide-react";
+import { Plus, Megaphone, Trash2, Pencil, Calendar, ChevronRight, FolderOpen } from "lucide-react";
 import { useClientContext } from "../../contexts/ClientContext";
 import { useCampaigns } from "../../hooks/useCampaigns";
 import { campaignsApi } from "../../services/api";
 import CampaignFormModal from "../../components/campaigns/CampaignFormModal";
-import CampaignDashboardView from "../../components/campaigns/CampaignDashboardView";
+import CampaignDashboardView, { campaignStatus } from "../../components/campaigns/CampaignDashboardView";
 import { LoadingState, ErrorState } from "../../components/ui/LoadingState";
 import { C } from "../../utils/colors";
-
-const STATUS_META = {
-  PLANNING: { label: "Planejamento", color: C.accent },
-  ACTIVE:   { label: "Ativa",        color: C.green },
-  ENDED:    { label: "Encerrada",    color: C.textDim },
-};
-
-const CHANNEL_LABEL = { INSTAGRAM: "Instagram", LINKEDIN: "LinkedIn", WEBSITE: "Website" };
 
 function fmtDate(d) {
   return d ? new Date(d).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit" }) : "—";
 }
 
-// Tab "Campanhas" dos dashboards (agência e cliente final).
-// readOnly = cliente final: só visualização (sem criar/editar/excluir).
+// Tab "Campanhas": agrupador inteligente de conteúdos já existentes nas
+// integrações. readOnly = cliente final (só visualização).
 export default function CampanhasTab({ readOnly = false }) {
   const clientId = useClientContext();
   const { campaigns, loading, error, reload } = useCampaigns(clientId);
@@ -41,7 +33,7 @@ export default function CampanhasTab({ readOnly = false }) {
 
   async function handleDelete(e, id) {
     e.stopPropagation();
-    if (!confirm("Excluir esta campanha e todas as associações?")) return;
+    if (!confirm("Excluir esta campanha? Os conteúdos originais não são afetados — apenas o agrupamento.")) return;
     setDeleting(id);
     await campaignsApi.remove(id).catch(() => null);
     reload();
@@ -54,7 +46,9 @@ export default function CampanhasTab({ readOnly = false }) {
         <div>
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: C.text }}>Campanhas</h2>
           <p style={{ margin: "3px 0 0", fontSize: 12, color: C.textMuted }}>
-            {readOnly ? "Resultados das ações de marketing por campanha." : "Organize as ações de marketing e acompanhe resultados por canal."}
+            {readOnly
+              ? "Resultados consolidados dos conteúdos de cada campanha."
+              : "Agrupe conteúdos já publicados (site, Instagram, LinkedIn) e veja o resultado consolidado."}
           </p>
         </div>
         {!readOnly && (
@@ -71,30 +65,26 @@ export default function CampanhasTab({ readOnly = false }) {
         <div style={{ textAlign: "center", padding: "50px 20px" }}>
           <Megaphone size={44} color={C.textDim} style={{ marginBottom: 12 }} />
           <p style={{ color: C.textMuted, fontSize: 14, margin: 0 }}>Nenhuma campanha ainda.</p>
-          {!readOnly && <p style={{ color: C.textDim, fontSize: 12, marginTop: 4 }}>Clique em "Nova Campanha" para começar.</p>}
+          {!readOnly && <p style={{ color: C.textDim, fontSize: 12, marginTop: 4 }}>Crie uma campanha e selecione os conteúdos que fazem parte dela.</p>}
         </div>
       )}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))", gap: 14 }}>
         {campaigns.map((campaign) => {
-          const status = STATUS_META[campaign.status] || STATUS_META.PLANNING;
-          const color = campaign.color || C.primary;
+          const status = campaignStatus(campaign);
+          const totalAssets = (campaign._count?.posts ?? 0) + (campaign._count?.pages ?? 0);
           return (
             <div
               key={campaign.id}
               onClick={() => setSelectedId(campaign.id)}
-              style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px 20px", cursor: "pointer", transition: "border-color 0.15s", position: "relative", borderLeft: `4px solid ${color}` }}
-              onMouseEnter={(e) => e.currentTarget.style.borderColor = color + "80"}
-              onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.borderLeftColor = color; }}
+              style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px 20px", cursor: "pointer", transition: "border-color 0.15s", position: "relative" }}
+              onMouseEnter={(e) => e.currentTarget.style.borderColor = C.primary + "60"}
+              onMouseLeave={(e) => e.currentTarget.style.borderColor = C.border}
             >
               <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
-                {campaign.imageUrl ? (
-                  <img src={campaign.imageUrl} alt="" style={{ width: 40, height: 40, borderRadius: 10, objectFit: "cover", background: C.border }} />
-                ) : (
-                  <div style={{ width: 40, height: 40, borderRadius: 10, background: color + "25", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    <Megaphone size={17} color={color} />
-                  </div>
-                )}
+                <div style={{ width: 40, height: 40, borderRadius: 10, background: C.primary + "22", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                  <FolderOpen size={17} color={C.primaryLight} />
+                </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 14.5, fontWeight: 700, color: C.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{campaign.name}</div>
                   <div style={{ fontSize: 11, color: C.textDim, display: "flex", alignItems: "center", gap: 4, marginTop: 2 }}>
@@ -104,29 +94,20 @@ export default function CampanhasTab({ readOnly = false }) {
                 <ChevronRight size={16} color={C.textDim} />
               </div>
 
-              {campaign.objective && (
-                <p style={{ margin: "0 0 10px", fontSize: 12, color: C.textMuted, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{campaign.objective}</p>
+              {campaign.description && (
+                <p style={{ margin: "0 0 10px", fontSize: 12, color: C.textMuted, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{campaign.description}</p>
               )}
 
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
                 <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 9px", borderRadius: 20, background: status.color + "20", color: status.color, textTransform: "uppercase", letterSpacing: "0.04em" }}>
                   {status.label}
                 </span>
-                {(campaign.channels || []).map((ch) => (
-                  <span key={ch.channel} style={{ fontSize: 10, padding: "3px 9px", borderRadius: 20, background: C.cardHover, color: C.textMuted, border: `1px solid ${C.border}` }}>
-                    {CHANNEL_LABEL[ch.channel] || ch.channel}
-                  </span>
-                ))}
-                <span style={{ fontSize: 10, color: C.textDim, marginLeft: "auto" }}>
-                  {campaign._count?.posts ?? 0} conteúdos · {campaign._count?.pages ?? 0} páginas
+                <span style={{ fontSize: 10.5, color: totalAssets > 0 ? C.textMuted : C.orange, marginLeft: "auto" }}>
+                  {totalAssets > 0
+                    ? `${campaign._count?.posts ?? 0} publicações · ${campaign._count?.pages ?? 0} páginas`
+                    : (readOnly ? "sem conteúdos" : "selecione os conteúdos →")}
                 </span>
               </div>
-
-              {campaign.responsible && (
-                <div style={{ fontSize: 11, color: C.textDim, display: "flex", alignItems: "center", gap: 4, marginTop: 8 }}>
-                  <User size={10} /> {campaign.responsible}
-                </div>
-              )}
 
               {!readOnly && (
                 <div style={{ position: "absolute", top: 12, right: 12, display: "flex", gap: 6 }}>
@@ -159,7 +140,12 @@ export default function CampanhasTab({ readOnly = false }) {
           clientId={clientId}
           campaign={modal.campaign}
           onClose={() => setModal(null)}
-          onSave={() => { setModal(null); reload(); }}
+          onSave={(saved) => {
+            setModal(null);
+            reload();
+            // Campanha nova abre direto na seleção de conteúdos
+            if (!modal.campaign && saved?.id) setSelectedId(saved.id);
+          }}
         />
       )}
     </>

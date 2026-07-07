@@ -1,5 +1,5 @@
 import React from "react";
-import { Eye, MousePointerClick, Heart, TrendingUp, PieChart as PieIcon, BarChart3 } from "lucide-react";
+import { Eye, MousePointerClick, Heart, TrendingUp, PieChart as PieIcon, BarChart3, Users, Globe, Target, Filter } from "lucide-react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   PieChart, Pie, Cell, AreaChart, Area,
@@ -16,6 +16,8 @@ const CHANNEL_META = {
   WEBSITE:   { label: "Website",   color: C.ga4 },
 };
 
+const FUNNEL_COLORS = [C.primary, C.purple, C.instagram, C.accent, C.ga4, C.green];
+
 export default function CampaignOverviewTab({ data, onGoToContent }) {
   const { consolidado, timeline, instagram, linkedin, website } = data;
   const hasContent = (instagram?.postsCount || 0) + (linkedin?.postsCount || 0) + (website?.pagesCount || 0) > 0;
@@ -24,10 +26,14 @@ export default function CampaignOverviewTab({ data, onGoToContent }) {
     return (
       <div style={{ textAlign: "center", padding: "60px 20px" }}>
         <BarChart3 size={48} color={C.textDim} style={{ marginBottom: 14 }} />
-        <p style={{ color: C.textMuted, fontSize: 14, margin: 0 }}>Nenhum conteúdo associado à campanha ainda.</p>
-        <button onClick={onGoToContent} style={{ marginTop: 14, padding: "9px 18px", borderRadius: 9, border: "none", background: `linear-gradient(135deg, ${C.primary}, ${C.primaryLight})`, color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "inherit" }}>
-          Associar Conteúdos
-        </button>
+        <p style={{ color: C.textMuted, fontSize: 14, margin: 0 }}>
+          Nenhum conteúdo vinculado ainda. A campanha é calculada apenas com os conteúdos selecionados.
+        </p>
+        {onGoToContent && (
+          <button onClick={onGoToContent} style={{ marginTop: 14, padding: "9px 18px", borderRadius: 9, border: "none", background: `linear-gradient(135deg, ${C.primary}, ${C.primaryLight})`, color: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 700, fontFamily: "inherit" }}>
+            Selecionar Conteúdos
+          </button>
+        )}
       </div>
     );
   }
@@ -44,18 +50,28 @@ export default function CampaignOverviewTab({ data, onGoToContent }) {
     Cliques: c.clicks,
   }));
 
+  const funnel = (consolidado.funnel || []).filter((f) => f.value > 0);
+  const funnelMax = funnel[0]?.value || 1;
+
   return (
     <>
-      {/* KPIs consolidados */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 28 }}>
-        <MetricCard title="Alcance Total"     value={fmt(consolidado.totalReach)}       icon={Eye}               color={C.primary} />
-        <MetricCard title="Impressões Totais" value={fmt(consolidado.totalImpressions)} icon={TrendingUp}        color={C.purple} />
-        <MetricCard title="Engajamento Total" value={fmt(consolidado.totalEngagement)}  icon={Heart}             color={C.instagram} />
-        <MetricCard title="Cliques Totais"    value={fmt(consolidado.totalClicks)}      icon={MousePointerClick} color={C.accent} />
+      {/* KPIs consolidados — calculados só com os conteúdos vinculados */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 28 }}>
+        <MetricCard title="Alcance Total"     value={fmt(consolidado.totalReach)}       icon={Eye}               color={C.primary} small />
+        <MetricCard title="Impressões"        value={fmt(consolidado.totalImpressions)} icon={TrendingUp}        color={C.purple} small />
+        <MetricCard title="Engajamento"       value={fmt(consolidado.totalEngagement)}  icon={Heart}             color={C.instagram} small />
+        <MetricCard title="Cliques"           value={fmt(consolidado.totalClicks)}      icon={MousePointerClick} color={C.accent} small />
+        {website && (
+          <>
+            <MetricCard title="Usuários Site"  value={fmt(consolidado.websiteUsers)}       icon={Users}  color={C.ga4} small />
+            <MetricCard title="Sessões"        value={fmt(consolidado.websiteSessions)}    icon={Globe}  color={C.cyan} small />
+            <MetricCard title="Conversões"     value={fmt(consolidado.websiteConversions)} icon={Target} color={C.green} small />
+          </>
+        )}
       </div>
 
-      {/* Comparação por canal */}
-      <SectionHeader icon={BarChart3} title="Comparação por Canal" subtitle="Alcance, impressões, engajamento e cliques" color={C.primary} />
+      {/* Comparação entre canais */}
+      <SectionHeader icon={BarChart3} title="Comparação entre Canais" subtitle="Somente os conteúdos vinculados à campanha" color={C.primary} />
       <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "22px 18px", marginBottom: 28 }}>
         <ResponsiveContainer width="100%" height={260}>
           <BarChart data={barData} barGap={4}>
@@ -71,8 +87,54 @@ export default function CampaignOverviewTab({ data, onGoToContent }) {
         </ResponsiveContainer>
       </div>
 
+      {/* Funil de aquisição + Distribuição de engajamento */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 16, marginBottom: 28 }}>
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 18px" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 14, display: "flex", alignItems: "center", gap: 6 }}>
+            <Filter size={13} color={C.primary} /> Funil de Aquisição
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {funnel.map((f, i) => (
+              <div key={f.stage}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 3 }}>
+                  <span style={{ fontSize: 11.5, color: C.textMuted }}>{f.stage}</span>
+                  <span style={{ fontSize: 11.5, fontWeight: 700, color: FUNNEL_COLORS[i % FUNNEL_COLORS.length] }}>{fmt(f.value)}</span>
+                </div>
+                <div style={{ height: 18, borderRadius: 5, background: C.cardHover, overflow: "hidden" }}>
+                  <div style={{
+                    width: `${Math.max(2, (f.value / funnelMax) * 100)}%`, height: "100%",
+                    background: `linear-gradient(90deg, ${FUNNEL_COLORS[i % FUNNEL_COLORS.length]}, ${FUNNEL_COLORS[i % FUNNEL_COLORS.length]}90)`,
+                    borderRadius: 5, transition: "width 0.4s",
+                  }} />
+                </div>
+              </div>
+            ))}
+            {funnel.length === 0 && <p style={{ color: C.textDim, fontSize: 12 }}>Sem dados suficientes para o funil.</p>}
+          </div>
+        </div>
+
+        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "20px 18px" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 10, display: "flex", alignItems: "center", gap: 6 }}>
+            <Heart size={13} color={C.instagram} /> Distribuição de Engajamento
+          </div>
+          {(consolidado.engagementBreakdown || []).length > 0 ? (
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={consolidado.engagementBreakdown} layout="vertical">
+                <CartesianGrid strokeDasharray="3 3" stroke={C.border} horizontal={false} />
+                <XAxis type="number" tick={{ fill: C.textMuted, fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis type="category" dataKey="tipo" tick={{ fill: C.textMuted, fontSize: 11 }} axisLine={false} tickLine={false} width={120} />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar dataKey="valor" fill={C.instagram} name="Interações" radius={[0, 4, 4, 0]} barSize={16} />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <p style={{ color: C.textDim, fontSize: 12, textAlign: "center", padding: "60px 0" }}>Sem engajamento registrado</p>
+          )}
+        </div>
+      </div>
+
       {/* Participação percentual */}
-      <SectionHeader icon={PieIcon} title="Participação por Canal" subtitle="Share de engajamento entre canais" color={C.accent} />
+      <SectionHeader icon={PieIcon} title="Participação por Canal" subtitle="Share de engajamento entre os canais da campanha" color={C.accent} />
       <div style={{ display: "grid", gridTemplateColumns: "minmax(260px, 1fr) 1.4fr", gap: 16, marginBottom: 28 }}>
         <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "22px 18px" }}>
           {pieData.length > 0 ? (
