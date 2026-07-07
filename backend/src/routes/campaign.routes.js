@@ -4,29 +4,27 @@ const { authMiddleware, requireAgency } = require("../middlewares/auth.middlewar
 
 const router = Router();
 router.use(authMiddleware);
-router.use(requireAgency);
 
-// CRUD
-router.get("/",       campaignController.list);      // ?clientId=
-router.post("/",      campaignController.create);    // ?clientId=
-router.get("/:id",    campaignController.get);
-router.patch("/:id",  campaignController.update);
-router.delete("/:id", campaignController.remove);
-
-// Canais
-router.put("/:id/channels", campaignController.setChannels);
-
-// Conteúdos disponíveis para associação (busca com ?q=)
-router.get("/:id/assets/instagram", campaignController.assetsInstagram);
-router.get("/:id/assets/linkedin",  campaignController.assetsLinkedin);
-router.get("/:id/assets/pages",     campaignController.assetsPages);
-
-// Associação de conteúdos / páginas
-router.put("/:id/posts", campaignController.setPosts);
-router.put("/:id/pages", campaignController.setPages);
-
-// Dashboard consolidado + Insights IA
+// ── Leitura: agência E cliente-final (JWT de cliente é escopado ao próprio clientId) ──
+router.get("/",                campaignController.list);      // ?clientId=
+router.get("/:id",             campaignController.get);
 router.get("/:id/dashboard",   campaignController.dashboard);
 router.get("/:id/ai-insights", campaignController.aiInsights);
+
+// ── Escrita e seleção de conteúdos: somente agência ──
+router.post("/",      requireAgency, campaignController.create);    // ?clientId=
+router.patch("/:id",  requireAgency, campaignController.update);
+router.delete("/:id", requireAgency, campaignController.remove);
+
+router.put("/:id/channels", requireAgency, campaignController.setChannels);
+
+// Conteúdos disponíveis para associação (busca com ?q=)
+router.get("/:id/assets/instagram", requireAgency, campaignController.assetsInstagram);
+router.get("/:id/assets/linkedin",  requireAgency, campaignController.assetsLinkedin);
+router.get("/:id/assets/pages",     requireAgency, campaignController.assetsPages);
+
+// Associação de conteúdos / páginas
+router.put("/:id/posts", requireAgency, campaignController.setPosts);
+router.put("/:id/pages", requireAgency, campaignController.setPages);
 
 module.exports = router;

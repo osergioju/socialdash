@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { BarChart3, Globe, Layers, LogOut, ArrowLeft, Users, RefreshCw, AlertCircle } from "lucide-react";
+import { BarChart3, Globe, Layers, LogOut, ArrowLeft, Users, RefreshCw, AlertCircle, Megaphone, Radar } from "lucide-react";
 import { C } from "../utils/colors";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -16,11 +16,13 @@ const LinkedinIcon = () => (
 );
 
 const TABS = [
-  { id: "overview",   label: "Visão Geral",     icon: BarChart3 },
-  { id: "instagram",  label: "Instagram",        icon: InstagramIcon },
-  { id: "linkedin",   label: "LinkedIn",         icon: LinkedinIcon },
-  { id: "site",       label: "Site (GA4)",       icon: Globe },
-  { id: "temas",      label: "Temas & Conteúdo", icon: Layers },
+  { id: "overview",   label: "Visão Geral",      icon: BarChart3 },
+  { id: "instagram",  label: "Instagram",         icon: InstagramIcon },
+  { id: "linkedin",   label: "LinkedIn",          icon: LinkedinIcon },
+  { id: "site",       label: "Site (GA4)",        icon: Globe },
+  { id: "temas",      label: "Temas & Conteúdo",  icon: Layers },
+  { id: "campanhas",  label: "Campanhas",         icon: Megaphone },
+  { id: "listening",  label: "Social Listening",  icon: Radar },
 ];
 
 function formatRelative(date) {

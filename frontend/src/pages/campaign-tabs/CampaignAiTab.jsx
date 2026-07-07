@@ -33,7 +33,7 @@ function List({ items, color }) {
 
 const CHANNEL_LABEL = { instagram: "Instagram", linkedin: "LinkedIn", website: "Website" };
 
-export default function CampaignAiTab({ campaignId }) {
+export default function CampaignAiTab({ campaignId, readOnly = false }) {
   const { data, loading, error, generating, regenerate } = useCampaignAiInsights(campaignId);
 
   if (loading) return <LoadingState message="Gerando análise por IA…" />;
@@ -54,10 +54,12 @@ export default function CampaignAiTab({ campaignId }) {
             </span>
           )}
         </div>
-        <button onClick={regenerate} disabled={generating} style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.border}`, background: generating ? C.primary + "15" : "transparent", color: generating ? C.primaryLight : C.textMuted, cursor: generating ? "default" : "pointer", fontSize: 12, fontFamily: "inherit" }}>
-          <RefreshCw size={12} style={{ animation: generating ? "spin 1s linear infinite" : "none" }} />
-          {generating ? "Gerando…" : "Regenerar"}
-        </button>
+        {!readOnly && (
+          <button onClick={regenerate} disabled={generating} style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.border}`, background: generating ? C.primary + "15" : "transparent", color: generating ? C.primaryLight : C.textMuted, cursor: generating ? "default" : "pointer", fontSize: 12, fontFamily: "inherit" }}>
+            <RefreshCw size={12} style={{ animation: generating ? "spin 1s linear infinite" : "none" }} />
+            {generating ? "Gerando…" : "Regenerar"}
+          </button>
+        )}
         <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
       </div>
 

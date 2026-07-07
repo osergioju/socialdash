@@ -9,6 +9,8 @@ import InstagramTab  from "./tabs/InstagramTab";
 import LinkedinTab   from "./tabs/LinkedinTab";
 import Ga4Tab        from "./tabs/Ga4Tab";
 import TemasTab      from "./tabs/TemasTab";
+import CampanhasTab  from "./tabs/CampanhasTab";
+import ListeningTab  from "./tabs/ListeningTab";
 
 const TAB_COMPONENTS = {
   overview:  OverviewTab,
@@ -16,6 +18,8 @@ const TAB_COMPONENTS = {
   linkedin:  LinkedinTab,
   site:      Ga4Tab,
   temas:     TemasTab,
+  campanhas: CampanhasTab,
+  listening: ListeningTab,
 };
 
 export default function DashboardPage() {

@@ -44,7 +44,7 @@ async function list(req, res) {
   try {
     const { clientId } = req.query;
     if (!clientId) return res.status(400).json({ error: "clientId é obrigatório" });
-    const campaigns = await campaignService.listCampaigns(clientId, req.user);
+    const campaigns = await campaignService.listCampaigns(clientId, { user: req.user, clientUser: req.clientUser });
     res.json(campaigns);
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
@@ -53,7 +53,7 @@ async function list(req, res) {
 
 async function get(req, res) {
   try {
-    const campaign = await campaignService.getCampaign(req.params.id, req.user);
+    const campaign = await campaignService.getCampaign(req.params.id, { user: req.user, clientUser: req.clientUser });
     res.json(campaign);
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
@@ -66,7 +66,7 @@ async function create(req, res) {
   try {
     const { clientId } = req.query;
     if (!clientId) return res.status(400).json({ error: "clientId é obrigatório" });
-    const campaign = await campaignService.createCampaign(clientId, parsed.data, req.user);
+    const campaign = await campaignService.createCampaign(clientId, parsed.data, { user: req.user, clientUser: req.clientUser });
     res.status(201).json(campaign);
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
@@ -77,7 +77,7 @@ async function update(req, res) {
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten() });
   try {
-    const campaign = await campaignService.updateCampaign(req.params.id, parsed.data, req.user);
+    const campaign = await campaignService.updateCampaign(req.params.id, parsed.data, { user: req.user, clientUser: req.clientUser });
     res.json(campaign);
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
@@ -86,7 +86,7 @@ async function update(req, res) {
 
 async function remove(req, res) {
   try {
-    await campaignService.deleteCampaign(req.params.id, req.user);
+    await campaignService.deleteCampaign(req.params.id, { user: req.user, clientUser: req.clientUser });
     res.status(204).end();
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
@@ -97,7 +97,7 @@ async function setChannels(req, res) {
   const parsed = z.object({ channels: z.array(channelEnum) }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten() });
   try {
-    const channels = await campaignService.setChannels(req.params.id, parsed.data.channels, req.user);
+    const channels = await campaignService.setChannels(req.params.id, parsed.data.channels, { user: req.user, clientUser: req.clientUser });
     res.json(channels);
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
@@ -106,7 +106,7 @@ async function setChannels(req, res) {
 
 async function assetsInstagram(req, res) {
   try {
-    const items = await campaignService.getAvailableInstagram(req.params.id, req.user, { q: req.query.q });
+    const items = await campaignService.getAvailableInstagram(req.params.id, { user: req.user, clientUser: req.clientUser }, { q: req.query.q });
     res.json(items);
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
@@ -115,7 +115,7 @@ async function assetsInstagram(req, res) {
 
 async function assetsLinkedin(req, res) {
   try {
-    const items = await campaignService.getAvailableLinkedin(req.params.id, req.user, { q: req.query.q });
+    const items = await campaignService.getAvailableLinkedin(req.params.id, { user: req.user, clientUser: req.clientUser }, { q: req.query.q });
     res.json(items);
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
@@ -124,7 +124,7 @@ async function assetsLinkedin(req, res) {
 
 async function assetsPages(req, res) {
   try {
-    const items = await campaignService.getAvailablePages(req.params.id, req.user, { q: req.query.q });
+    const items = await campaignService.getAvailablePages(req.params.id, { user: req.user, clientUser: req.clientUser }, { q: req.query.q });
     res.json(items);
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
@@ -135,7 +135,7 @@ async function setPosts(req, res) {
   const parsed = postsSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten() });
   try {
-    const posts = await campaignService.setPosts(req.params.id, parsed.data.channel, parsed.data.posts, req.user);
+    const posts = await campaignService.setPosts(req.params.id, parsed.data.channel, parsed.data.posts, { user: req.user, clientUser: req.clientUser });
     res.json(posts);
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
@@ -146,7 +146,7 @@ async function setPages(req, res) {
   const parsed = pagesSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten() });
   try {
-    const pages = await campaignService.setPages(req.params.id, parsed.data.pages, req.user);
+    const pages = await campaignService.setPages(req.params.id, parsed.data.pages, { user: req.user, clientUser: req.clientUser });
     res.json(pages);
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
@@ -155,7 +155,7 @@ async function setPages(req, res) {
 
 async function dashboard(req, res) {
   try {
-    const data = await campaignService.getDashboard(req.params.id, req.user);
+    const data = await campaignService.getDashboard(req.params.id, { user: req.user, clientUser: req.clientUser });
     res.json(data);
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
@@ -164,8 +164,9 @@ async function dashboard(req, res) {
 
 async function aiInsights(req, res) {
   try {
-    const force = req.query.force === "true" || req.query.force === "1";
-    const data = await campaignService.getAiInsights(req.params.id, req.user, force);
+    // Regeneração forçada só para a agência — cliente final apenas visualiza
+    const force = (req.query.force === "true" || req.query.force === "1") && !!req.user;
+    const data = await campaignService.getAiInsights(req.params.id, { user: req.user, clientUser: req.clientUser }, force);
     res.json(data);
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });

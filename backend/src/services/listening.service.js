@@ -4,7 +4,7 @@
  */
 
 const prisma = require("../config/prisma");
-const { assertClientAccess } = require("../utils/teamAccess");
+const { assertActorClientAccess } = require("../utils/teamAccess");
 const { generateListeningSummary } = require("./gemini.service");
 const { DEFAULT_SOURCE_TYPES } = require("./listening-sources");
 
@@ -20,7 +20,7 @@ async function getMonitoringScoped(id, user, include = {}) {
     include: { keywords: true, sources: true, ...include },
   });
   if (!monitoring) throw notFound();
-  await assertClientAccess(user, monitoring.clientId);
+  await assertActorClientAccess(user, monitoring.clientId);
   return monitoring;
 }
 
@@ -52,7 +52,7 @@ function serializeMonitoring(m) {
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
 
 async function listMonitorings(clientId, user) {
-  await assertClientAccess(user, clientId);
+  await assertActorClientAccess(user, clientId);
   const monitorings = await prisma.monitoring.findMany({
     where: { clientId },
     orderBy: { createdAt: "desc" },
@@ -73,7 +73,7 @@ async function getMonitoring(id, user) {
 }
 
 async function createMonitoring(clientId, data, user) {
-  await assertClientAccess(user, clientId);
+  await assertActorClientAccess(user, clientId);
   const monitoring = await prisma.monitoring.create({
     data: {
       clientId,

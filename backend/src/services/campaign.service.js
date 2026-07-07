@@ -9,7 +9,7 @@
  */
 
 const prisma = require("../config/prisma");
-const { assertClientAccess } = require("../utils/teamAccess");
+const { assertActorClientAccess } = require("../utils/teamAccess");
 const { generateCampaignInsights } = require("./gemini.service");
 const {
   httpGet, httpPost, getValidToken,
@@ -50,7 +50,7 @@ async function getCampaignScoped(id, user) {
     include: { channels: true, client: { select: { id: true, name: true } } },
   });
   if (!campaign) throw notFound();
-  await assertClientAccess(user, campaign.clientId);
+  await assertActorClientAccess(user, campaign.clientId);
   return campaign;
 }
 
@@ -71,7 +71,7 @@ function toDateOnly(d) {
 // ─── CRUD ─────────────────────────────────────────────────────────────────────
 
 async function listCampaigns(clientId, user) {
-  await assertClientAccess(user, clientId);
+  await assertActorClientAccess(user, clientId);
   return prisma.campaign.findMany({
     where: { clientId },
     orderBy: { startDate: "desc" },
@@ -92,7 +92,7 @@ async function getCampaign(id, user) {
 }
 
 async function createCampaign(clientId, data, user) {
-  await assertClientAccess(user, clientId);
+  await assertActorClientAccess(user, clientId);
   const channels = (data.channels || []).filter((c) => SUPPORTED_CHANNELS.includes(c));
   return prisma.campaign.create({
     data: {

@@ -28,7 +28,7 @@ function List({ items }) {
   );
 }
 
-export default function ListeningSummaryTab({ monitoringId }) {
+export default function ListeningSummaryTab({ monitoringId, readOnly = false }) {
   const [period, setPeriod] = useState("weekly");
   const { data, loading, error, generating, regenerate } = useListeningSummary(monitoringId, period);
 
@@ -49,10 +49,12 @@ export default function ListeningSummaryTab({ monitoringId }) {
             </button>
           ))}
         </div>
-        <button onClick={regenerate} disabled={generating} style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.border}`, background: generating ? C.primary + "15" : "transparent", color: generating ? C.primaryLight : C.textMuted, cursor: generating ? "default" : "pointer", fontSize: 12, fontFamily: "inherit" }}>
-          <RefreshCw size={12} style={{ animation: generating ? "spin 1s linear infinite" : "none" }} />
-          {generating ? "Gerando…" : "Regenerar"}
-        </button>
+        {!readOnly && (
+          <button onClick={regenerate} disabled={generating} style={{ display: "flex", alignItems: "center", gap: 6, padding: "7px 14px", borderRadius: 8, border: `1px solid ${C.border}`, background: generating ? C.primary + "15" : "transparent", color: generating ? C.primaryLight : C.textMuted, cursor: generating ? "default" : "pointer", fontSize: 12, fontFamily: "inherit" }}>
+            <RefreshCw size={12} style={{ animation: generating ? "spin 1s linear infinite" : "none" }} />
+            {generating ? "Gerando…" : "Regenerar"}
+          </button>
+        )}
       </div>
 
       {loading && <LoadingState message="Gerando resumo executivo por IA…" />}

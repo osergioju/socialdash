@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useParams } from "react-router-dom";
-import { BarChart3, Globe, Layers, LogOut } from "lucide-react";
+import { BarChart3, Globe, Layers, LogOut, Megaphone, Radar } from "lucide-react";
 import { C } from "../utils/colors";
 import { useClientAuth } from "../contexts/ClientAuthContext";
 import { ClientContext } from "../contexts/ClientContext";
@@ -9,6 +9,8 @@ import InstagramTab from "./tabs/InstagramTab";
 import LinkedinTab  from "./tabs/LinkedinTab";
 import Ga4Tab       from "./tabs/Ga4Tab";
 import TemasTab     from "./tabs/TemasTab";
+import CampanhasTab from "./tabs/CampanhasTab";
+import ListeningTab from "./tabs/ListeningTab";
 
 const InstagramIcon = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -22,11 +24,13 @@ const LinkedinIcon = () => (
 );
 
 const TABS = [
-  { id: "overview",  label: "Visão Geral",     icon: BarChart3 },
-  { id: "instagram", label: "Instagram",        icon: InstagramIcon },
-  { id: "linkedin",  label: "LinkedIn",         icon: LinkedinIcon },
-  { id: "site",      label: "Site (GA4)",       icon: Globe },
-  { id: "temas",     label: "Temas & Conteúdo", icon: Layers },
+  { id: "overview",  label: "Visão Geral",      icon: BarChart3 },
+  { id: "instagram", label: "Instagram",         icon: InstagramIcon },
+  { id: "linkedin",  label: "LinkedIn",          icon: LinkedinIcon },
+  { id: "site",      label: "Site (GA4)",        icon: Globe },
+  { id: "temas",     label: "Temas & Conteúdo",  icon: Layers },
+  { id: "campanhas", label: "Campanhas",         icon: Megaphone },
+  { id: "listening", label: "Social Listening",  icon: Radar },
 ];
 
 const TAB_COMPONENTS = {
@@ -35,6 +39,8 @@ const TAB_COMPONENTS = {
   linkedin:  LinkedinTab,
   site:      Ga4Tab,
   temas:     TemasTab,
+  campanhas: CampanhasTab,
+  listening: ListeningTab,
 };
 
 export default function ClientDashboardPage() {
@@ -101,9 +107,9 @@ export default function ClientDashboardPage() {
 
         <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
 
-        {/* Content */}
+        {/* Content — cliente final: Campanhas e Social Listening em modo leitura */}
         <div style={{ maxWidth: 1200, margin: "0 auto", padding: "22px 24px" }}>
-          <TabComponent />
+          <TabComponent readOnly />
         </div>
       </div>
     </ClientContext.Provider>

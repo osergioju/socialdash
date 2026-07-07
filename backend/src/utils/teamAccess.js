@@ -41,4 +41,17 @@ async function userTeamIds(userId) {
   return rows.map((r) => r.teamId);
 }
 
-module.exports = { clientScopeWhere, userCanAccessClient, assertClientAccess, userTeamIds };
+// Como assertClientAccess, mas aceita também JWT de cliente-final.
+// `actor` = { user, clientUser } (req.user / req.clientUser do auth.middleware).
+// Cliente-final só enxerga o próprio clientId (token já é escopado).
+async function assertActorClientAccess(actor, clientId) {
+  if (actor?.clientUser) {
+    if (actor.clientUser.clientId !== clientId) {
+      throw Object.assign(new Error("Sem permissão"), { status: 403 });
+    }
+    return;
+  }
+  await assertClientAccess(actor?.user, clientId);
+}
+
+module.exports = { clientScopeWhere, userCanAccessClient, assertClientAccess, userTeamIds, assertActorClientAccess };

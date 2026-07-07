@@ -37,7 +37,7 @@ async function list(req, res) {
   try {
     const { clientId } = req.query;
     if (!clientId) return res.status(400).json({ error: "clientId é obrigatório" });
-    const monitorings = await listeningService.listMonitorings(clientId, req.user);
+    const monitorings = await listeningService.listMonitorings(clientId, { user: req.user, clientUser: req.clientUser });
     res.json(monitorings);
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
@@ -46,7 +46,7 @@ async function list(req, res) {
 
 async function get(req, res) {
   try {
-    const monitoring = await listeningService.getMonitoring(req.params.id, req.user);
+    const monitoring = await listeningService.getMonitoring(req.params.id, { user: req.user, clientUser: req.clientUser });
     res.json(monitoring);
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
@@ -59,7 +59,7 @@ async function create(req, res) {
   try {
     const { clientId } = req.query;
     if (!clientId) return res.status(400).json({ error: "clientId é obrigatório" });
-    const monitoring = await listeningService.createMonitoring(clientId, parsed.data, req.user);
+    const monitoring = await listeningService.createMonitoring(clientId, parsed.data, { user: req.user, clientUser: req.clientUser });
     res.status(201).json(monitoring);
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
@@ -70,7 +70,7 @@ async function update(req, res) {
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten() });
   try {
-    const monitoring = await listeningService.updateMonitoring(req.params.id, parsed.data, req.user);
+    const monitoring = await listeningService.updateMonitoring(req.params.id, parsed.data, { user: req.user, clientUser: req.clientUser });
     res.json(monitoring);
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
@@ -79,7 +79,7 @@ async function update(req, res) {
 
 async function remove(req, res) {
   try {
-    await listeningService.deleteMonitoring(req.params.id, req.user);
+    await listeningService.deleteMonitoring(req.params.id, { user: req.user, clientUser: req.clientUser });
     res.status(204).end();
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
@@ -90,7 +90,7 @@ async function setSources(req, res) {
   const parsed = sourcesSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten() });
   try {
-    const sources = await listeningService.setSources(req.params.id, parsed.data.sources, req.user);
+    const sources = await listeningService.setSources(req.params.id, parsed.data.sources, { user: req.user, clientUser: req.clientUser });
     res.json(sources);
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
@@ -100,7 +100,7 @@ async function setSources(req, res) {
 // Coleta sob demanda (a periódica roda no scheduler)
 async function collect(req, res) {
   try {
-    await listeningService.getMonitoringScoped(req.params.id, req.user);
+    await listeningService.getMonitoringScoped(req.params.id, { user: req.user, clientUser: req.clientUser });
     const result = await collectMonitoring(req.params.id);
     res.json(result);
   } catch (err) {
@@ -113,7 +113,7 @@ async function mentions(req, res) {
     const { sentiment, sourceType, urgency, q } = req.query;
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize, 10) || 20));
-    const data = await listeningService.listMentions(req.params.id, req.user, {
+    const data = await listeningService.listMentions(req.params.id, { user: req.user, clientUser: req.clientUser }, {
       sentiment, sourceType, urgency, q, page, pageSize,
     });
     res.json(data);
@@ -125,7 +125,7 @@ async function mentions(req, res) {
 async function dashboard(req, res) {
   try {
     const days = Math.min(365, Math.max(1, parseInt(req.query.days, 10) || 30));
-    const data = await listeningService.getDashboard(req.params.id, req.user, { days });
+    const data = await listeningService.getDashboard(req.params.id, { user: req.user, clientUser: req.clientUser }, { days });
     res.json(data);
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
@@ -135,8 +135,9 @@ async function dashboard(req, res) {
 async function summary(req, res) {
   try {
     const period = req.query.period === "monthly" ? "monthly" : "weekly";
-    const force = req.query.force === "true" || req.query.force === "1";
-    const data = await listeningService.getExecutiveSummary(req.params.id, req.user, { period, force });
+    // Regeneração forçada só para a agência — cliente final apenas visualiza
+    const force = (req.query.force === "true" || req.query.force === "1") && !!req.user;
+    const data = await listeningService.getExecutiveSummary(req.params.id, { user: req.user, clientUser: req.clientUser }, { period, force });
     res.json(data);
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
@@ -145,7 +146,7 @@ async function summary(req, res) {
 
 async function alertRules(req, res) {
   try {
-    const rules = await listeningService.listAlertRules(req.params.id, req.user);
+    const rules = await listeningService.listAlertRules(req.params.id, { user: req.user, clientUser: req.clientUser });
     res.json(rules);
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
@@ -156,7 +157,7 @@ async function setAlertRules(req, res) {
   const parsed = alertRulesSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Dados inválidos", details: parsed.error.flatten() });
   try {
-    const rules = await listeningService.setAlertRules(req.params.id, parsed.data.rules, req.user);
+    const rules = await listeningService.setAlertRules(req.params.id, parsed.data.rules, { user: req.user, clientUser: req.clientUser });
     res.json(rules);
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
