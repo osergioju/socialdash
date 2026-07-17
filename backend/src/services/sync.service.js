@@ -957,41 +957,6 @@ async function syncGa4(clientId, conn) {
     }
   );
 
-  const pagesReport = await httpPost(
-    `https://analyticsdata.googleapis.com/v1beta/${propertyId}:runReport`,
-    token,
-    {
-      dateRanges: [{ startDate: GA4_START, endDate: "today" }],
-      dimensions: [{ name: "yearMonth" }, { name: "pagePath" }],
-      metrics: [{ name: "screenPageViews" }, { name: "userEngagementDuration" }],
-      orderBys: [
-        { dimension: { dimensionName: "yearMonth" }, desc: false },
-        { metric: { metricName: "screenPageViews" }, desc: true },
-      ],
-      limit: 120,
-    }
-  );
-
-  const originsReport = await httpPost(
-    `https://analyticsdata.googleapis.com/v1beta/${propertyId}:runReport`,
-    token,
-    {
-      dateRanges: [{ startDate: GA4_START, endDate: "today" }],
-      dimensions: [{ name: "yearMonth" }, { name: "sessionSource" }],
-      metrics: [
-        { name: "sessions" },
-        { name: "engagementRate" },
-        { name: "userEngagementDuration" },
-        { name: "activeUsers" },
-      ],
-      orderBys: [
-        { dimension: { dimensionName: "yearMonth" }, desc: false },
-        { metric: { metricName: "sessions" }, desc: true },
-      ],
-      limit: 120,
-    }
-  );
-
   // GA4 yearMonth: "YYYYMM" (6 chars)
   const ymToMk = (ym) => `${ym.slice(0, 4)}-${ym.slice(4, 6)}`;
   if (mainReport.error) {
@@ -1001,30 +966,61 @@ async function syncGa4(clientId, conn) {
   console.log(`[ga4] startDate=${GA4_START} | API retornou ${mainReport.rows?.length ?? 0} meses:`, (mainReport.rows || []).map(r => r.dimensionValues?.[0]?.value));
   const ymToMl = (ym) => `${ym.slice(4, 6)}/${ym.slice(0, 4)}`;
 
-  // Build pages lookup: mk → top-10 entries (already sorted desc by API)
+  // Pages/origins são buscados MÊS A MÊS: o `limit` da API do GA4 é um teto
+  // global sobre a resposta inteira, não "top N por mês". Uma única query de
+  // 12 meses ordenada por yearMonth-depois-métrica deixava os meses antigos
+  // consumirem todo o orçamento de linhas, zerando os meses recentes.
   const pagesMap = {};
-  for (const row of pagesReport.rows || []) {
-    const ym     = row.dimensionValues?.[0]?.value || "";
-    const pagina = row.dimensionValues?.[1]?.value || "/";
-    const views  = Math.round(parseFloat(row.metricValues?.[0]?.value || "0"));
-    const tempo  = Math.round(parseFloat(row.metricValues?.[1]?.value || "0") / Math.max(views, 1));
-    const mk     = ymToMk(ym);
-    if (!pagesMap[mk]) pagesMap[mk] = [];
-    if (pagesMap[mk].length < 10) pagesMap[mk].push({ pagina, views, tempo });
-  }
-
-  // Build origins lookup: mk → top-10 entries
   const originsMap = {};
-  for (const row of originsReport.rows || []) {
-    const ym       = row.dimensionValues?.[0]?.value || "";
-    const fonte    = row.dimensionValues?.[1]?.value || "(direct)";
-    const sess     = Math.round(parseFloat(row.metricValues?.[0]?.value || "0"));
-    const taxaEng  = parseFloat((parseFloat(row.metricValues?.[1]?.value || "0") * 100).toFixed(1));
-    const users    = Math.round(parseFloat(row.metricValues?.[3]?.value || "1"));
-    const tempoMedio = Math.round(parseFloat(row.metricValues?.[2]?.value || "0") / Math.max(users, 1));
-    const mk       = ymToMk(ym);
-    if (!originsMap[mk]) originsMap[mk] = [];
-    if (originsMap[mk].length < 10) originsMap[mk].push({ fonte, sess, taxaEng, tempoMedio });
+  const monthCursor = new Date(_now.getFullYear(), _now.getMonth() - 12, 1);
+  const monthCursorEnd = new Date(_now.getFullYear(), _now.getMonth(), 1);
+  while (monthCursor <= monthCursorEnd) {
+    const y = monthCursor.getFullYear();
+    const m = monthCursor.getMonth(); // 0-based
+    const mk = `${y}-${String(m + 1).padStart(2, "0")}`;
+    const isCurrentMonth = y === _now.getFullYear() && m === _now.getMonth();
+    const monthStart = `${mk}-01`;
+    const monthEnd = isCurrentMonth ? "today" : new Date(y, m + 1, 0).toISOString().slice(0, 10);
+
+    const [pagesResp, originsResp] = await Promise.all([
+      httpPost(`https://analyticsdata.googleapis.com/v1beta/${propertyId}:runReport`, token, {
+        dateRanges: [{ startDate: monthStart, endDate: monthEnd }],
+        dimensions: [{ name: "pagePath" }],
+        metrics: [{ name: "screenPageViews" }, { name: "userEngagementDuration" }],
+        orderBys: [{ metric: { metricName: "screenPageViews" }, desc: true }],
+        limit: 10,
+      }),
+      httpPost(`https://analyticsdata.googleapis.com/v1beta/${propertyId}:runReport`, token, {
+        dateRanges: [{ startDate: monthStart, endDate: monthEnd }],
+        dimensions: [{ name: "sessionSource" }],
+        metrics: [
+          { name: "sessions" },
+          { name: "engagementRate" },
+          { name: "userEngagementDuration" },
+          { name: "activeUsers" },
+        ],
+        orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
+        limit: 10,
+      }),
+    ]);
+
+    pagesMap[mk] = (pagesResp.rows || []).map((row) => {
+      const pagina = row.dimensionValues?.[0]?.value || "/";
+      const views  = Math.round(parseFloat(row.metricValues?.[0]?.value || "0"));
+      const tempo  = Math.round(parseFloat(row.metricValues?.[1]?.value || "0") / Math.max(views, 1));
+      return { pagina, views, tempo };
+    });
+
+    originsMap[mk] = (originsResp.rows || []).map((row) => {
+      const fonte      = row.dimensionValues?.[0]?.value || "(direct)";
+      const sess        = Math.round(parseFloat(row.metricValues?.[0]?.value || "0"));
+      const taxaEng     = parseFloat((parseFloat(row.metricValues?.[1]?.value || "0") * 100).toFixed(1));
+      const users       = Math.round(parseFloat(row.metricValues?.[3]?.value || "1"));
+      const tempoMedio  = Math.round(parseFloat(row.metricValues?.[2]?.value || "0") / Math.max(users, 1));
+      return { fonte, sess, taxaEng, tempoMedio };
+    });
+
+    monthCursor.setMonth(monthCursor.getMonth() + 1);
   }
 
   // Persist each month
