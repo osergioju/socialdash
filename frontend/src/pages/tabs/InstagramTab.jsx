@@ -10,6 +10,7 @@ import { useClientContext } from "../../contexts/ClientContext";
 import { LoadingState, ErrorState } from "../../components/ui/LoadingState";
 import SectionHeader from "../../components/ui/SectionHeader";
 import CustomTooltip from "../../components/ui/CustomTooltip";
+import MonthNav from "../../components/ui/MonthNav";
 import { C } from "../../utils/colors";
 import { fmt } from "../../utils/format";
 
@@ -54,7 +55,8 @@ const CITY_COLORS = [C.instagram, C.accent, C.green, C.purple, C.cyan || "#06B6D
 export default function InstagramTab() {
   const clientId = useClientContext();
   const { data, loading, error } = useInstagram(clientId);
-  const [mi, setMi] = useState(0); // 0 = mês mais recente
+  // Inicia em Infinity para que Math.min(Infinity, length-1) selecione sempre o mês mais recente
+  const [mi, setMi] = useState(Infinity);
 
   if (loading) return <LoadingState />;
   if (error)   return <ErrorState message={error} />;
@@ -62,14 +64,12 @@ export default function InstagramTab() {
   const { metrics, cities } = data;
   if (!metrics?.length) return <ErrorState message="Nenhum dado disponível. Clique em Sincronizar para buscar os dados." />;
 
-  // Ordena do mais antigo → mais recente (para gráficos)
+  // Ordena do mais antigo → mais recente (para gráficos e para o seletor)
   const sorted = [...metrics].sort((a, b) => a.month.localeCompare(b.month));
 
-  // Seletor: mais recente primeiro
-  const reversedForSelector = [...sorted].reverse();
-  const safeMi = Math.min(mi, reversedForSelector.length - 1);
-  const m    = reversedForSelector[safeMi];
-  const prev = reversedForSelector[safeMi + 1] ?? null;
+  const safeMi = Math.min(mi, sorted.length - 1);
+  const m    = sorted[safeMi];
+  const prev = sorted[safeMi - 1] ?? null;
 
   // Dados para gráficos (ordem cronológica)
   const chartData = sorted.map(x => ({
@@ -86,9 +86,6 @@ export default function InstagramTab() {
     novos:           x.novosSeguidores,
     visitasPerfil:   x.visitasPerfil,
   }));
-
-  // Índice do mês selecionado no array cronológico (para highlight nas células)
-  const selectedIdxInSorted = sorted.indexOf(m);
 
   // Cidades — ranking do mês mais recente
   const cityData = cities
@@ -123,24 +120,7 @@ export default function InstagramTab() {
         <MetricCard title="Reels Inter."   value={fmt(m.reelsInteracoes)}                variation={calcVar(m.reelsInteracoes, prev?.reelsInteracoes)}  icon={Video}             color={C.red}          small />
       </div>
 
-      {/* Seletor de mês */}
-      <div style={{ display: "flex", gap: 5, marginBottom: 22, flexWrap: "wrap" }}>
-        {reversedForSelector.map((x, i) => (
-          <button
-            key={x.month}
-            onClick={() => setMi(i)}
-            style={{
-              padding: "5px 12px", borderRadius: 8, border: "none", cursor: "pointer",
-              fontSize: 11, fontWeight: 600, fontFamily: "inherit", whiteSpace: "nowrap",
-              background: safeMi === i ? C.instagram + "25" : C.card,
-              color:      safeMi === i ? C.instagram : C.textMuted,
-              outline:    safeMi === i ? `1px solid ${C.instagram}50` : `1px solid ${C.border}`,
-            }}
-          >
-            {x.monthLabel}
-          </button>
-        ))}
-      </div>
+      <MonthNav months={sorted} selected={safeMi} onSelect={setMi} color={C.instagram} />
 
       {/* Alcance & Visualizações — ComposedChart (Bar visualizações + Line alcance) */}
       <SectionHeader icon={Eye} title="Alcance & Visualizações" subtitle="Evolução orgânica mensal" color={C.instagram} />
@@ -254,7 +234,7 @@ export default function InstagramTab() {
             <Legend wrapperStyle={{ fontSize: 11 }} />
             <Bar yAxisId="n" dataKey="novos" fill={C.green} name="Novos" radius={[4, 4, 0, 0]}>
               {chartData.map((_, i) => (
-                <Cell key={i} fill={i === selectedIdxInSorted ? C.green : C.green + "55"} />
+                <Cell key={i} fill={i === safeMi ? C.green : C.green + "55"} />
               ))}
             </Bar>
             <Line

@@ -7,20 +7,9 @@ import { LoadingState, ErrorState } from "../../components/ui/LoadingState";
 import MetricCard from "../../components/ui/MetricCard";
 import SectionHeader from "../../components/ui/SectionHeader";
 import CustomTooltip from "../../components/ui/CustomTooltip";
+import MonthNav from "../../components/ui/MonthNav";
 import { C } from "../../utils/colors";
 import { fmt, calcVar } from "../../utils/format";
-
-function MonthSelector({ months, selected, onSelect, color }) {
-  return (
-    <div style={{ display: "flex", gap: 5, marginBottom: 22, overflowX: "auto", paddingBottom: 4 }}>
-      {months.map((m, i) => (
-        <button key={i} onClick={() => onSelect(i)} style={{ padding: "5px 12px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600, fontFamily: "inherit", whiteSpace: "nowrap", background: selected === i ? color + "25" : C.card, color: selected === i ? color : C.textMuted, outline: selected === i ? `1px solid ${color}50` : `1px solid ${C.border}` }}>
-          {m.monthLabel}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 function InlineBarList({ items, valueKey, color }) {
   const max = Math.max(...items.map(i => i[valueKey] || 0), 1);
@@ -98,7 +87,7 @@ export default function LinkedinTab() {
         <MetricCard title="Reações"     value={m.reacoes.toString()}         variation={calcVar(reacs, safeMi)} icon={Zap}              color={C.orange}        small />
       </div>
 
-      <MonthSelector months={metrics} selected={safeMi} onSelect={setMi} color={C.linkedin} />
+      <MonthNav months={metrics} selected={safeMi} onSelect={setMi} color={C.linkedin} />
 
       {/* Evolução completa: impressões + alcance + engajamento */}
       <SectionHeader icon={TrendingUp} title="Evolução do LinkedIn" subtitle="Impressões, alcance e engajamento" color={C.linkedin} />

@@ -8,30 +8,9 @@ import MetricCard from "../../components/ui/MetricCard";
 import SectionHeader from "../../components/ui/SectionHeader";
 import CustomTooltip from "../../components/ui/CustomTooltip";
 import DataTable from "../../components/ui/DataTable";
+import MonthNav from "../../components/ui/MonthNav";
 import { C } from "../../utils/colors";
 import { fmt, calcVar } from "../../utils/format";
-
-function MonthSelector({ months, selected, onSelect, color, consolidado, onConsolidado }) {
-  const btnBase = { padding: "5px 12px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 11, fontWeight: 600, fontFamily: "inherit", whiteSpace: "nowrap" };
-  return (
-    <div style={{ display: "flex", gap: 5, marginBottom: 22, overflowX: "auto", paddingBottom: 4, alignItems: "center" }}>
-      <button
-        onClick={onConsolidado}
-        style={{ ...btnBase, fontWeight: 700, background: consolidado ? color + "25" : C.card, color: consolidado ? color : C.textMuted, outline: consolidado ? `1px solid ${color}80` : `1px solid ${C.border}` }}
-      >
-        ∑ Geral
-      </button>
-      <div style={{ width: 1, height: 20, background: C.border, flexShrink: 0 }} />
-      {months.map((m, i) => (
-        <button key={i} onClick={() => onSelect(i)}
-          style={{ ...btnBase, background: !consolidado && selected === i ? color + "25" : C.card, color: !consolidado && selected === i ? color : C.textMuted, outline: !consolidado && selected === i ? `1px solid ${color}50` : `1px solid ${C.border}` }}
-        >
-          {m.monthLabel}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 export default function Ga4Tab() {
   const clientId = useClientContext();
@@ -169,7 +148,26 @@ export default function Ga4Tab() {
         </div>
       )}
 
-      <MonthSelector months={metrics} selected={safeMi} onSelect={i => { setMi(i); setShowConsolidado(false); }} color={C.ga4} consolidado={showConsolidado} onConsolidado={() => setShowConsolidado(v => !v)} />
+      <MonthNav
+        months={metrics}
+        selected={safeMi}
+        onSelect={i => { setMi(i); setShowConsolidado(false); }}
+        color={showConsolidado ? C.textMuted : C.ga4}
+        extra={
+          <button
+            onClick={() => setShowConsolidado(v => !v)}
+            style={{
+              padding: "5px 12px", borderRadius: 8, border: "none", cursor: "pointer",
+              fontSize: 11, fontWeight: 700, fontFamily: "inherit", whiteSpace: "nowrap",
+              background: showConsolidado ? C.ga4 + "25" : C.card,
+              color: showConsolidado ? C.ga4 : C.textMuted,
+              outline: showConsolidado ? `1px solid ${C.ga4}80` : `1px solid ${C.border}`,
+            }}
+          >
+            ∑ Geral
+          </button>
+        }
+      />
 
       {/* Tráfego Mensal Completo */}
       <SectionHeader icon={Globe} title="Tráfego Mensal Completo" subtitle="Usuários, sessões e sessões engajadas" color={C.ga4} />
