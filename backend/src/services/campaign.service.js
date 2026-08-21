@@ -247,7 +247,10 @@ async function getAvailableLinkedin(id, user, { q } = {}) {
     }
 
     const token = await getValidToken(conn);
-    const rawPosts = await fetchLinkedinPosts(token, meta.organizationUrn, 100);
+    // 300 para dar a mesma cobertura de histórico do picker do Instagram —
+    // com 100 (cap anterior), páginas com >100 posts escondiam tudo que era
+    // mais antigo que o post #100 do filtro de período, mesmo com data válida.
+    const rawPosts = await fetchLinkedinPosts(token, meta.organizationUrn, 300);
     const statsMap = await fetchLinkedinPostStats(token, meta.organizationUrn, rawPosts.map((p) => p.id))
       .catch(() => ({}));
 
