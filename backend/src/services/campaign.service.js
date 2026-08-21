@@ -29,8 +29,8 @@ function cacheGet(key) {
   if (Date.now() > entry.expiresAt) { cache.delete(key); return null; }
   return entry.data;
 }
-function cacheSet(key, data) {
-  cache.set(key, { data, expiresAt: Date.now() + CACHE_TTL });
+function cacheSet(key, data, ttl = CACHE_TTL) {
+  cache.set(key, { data, expiresAt: Date.now() + ttl });
 }
 function invalidateCampaignCache(campaignId) {
   for (const key of cache.keys()) {
@@ -429,7 +429,12 @@ async function refreshCampaignPostMetrics(campaign) {
   }
 
   const liPosts = posts.filter((p) => p.channel === "LINKEDIN");
-  if (liPosts.length) {
+  // organizationalEntityShareStatistics tem cota DIÁRIA baixa no LinkedIn — sem
+  // esse cooldown, cada visita ao dashboard da campanha reconsulta a API pra
+  // todos os posts vinculados e estoura o limite rapidinho (já aconteceu).
+  const cooldownKey = `campaign:li-refresh:${campaign.id}`;
+  if (liPosts.length && !cacheGet(cooldownKey)) {
+    cacheSet(cooldownKey, true, 15 * 60 * 1000);
     try {
       const conn = await getConnection(campaign.clientId, "LINKEDIN");
       if (conn && conn.status === "CONNECTED") {
