@@ -1,4 +1,5 @@
 const oauthService = require("../services/oauth.service");
+const { invalidateClientAssetsCache } = require("../services/campaign.service");
 
 const PLATFORM_MAP = {
   meta: "META",
@@ -42,6 +43,7 @@ async function callback(req, res) {
 
   try {
     const result = await oauthService.handleCallback(platform, code, state);
+    invalidateClientAssetsCache(result.clientId);
     return res.redirect(
       frontendUrl(`/oauth/callback?success=true&platform=${platform}&clientId=${result.clientId}`)
     );
@@ -62,6 +64,7 @@ async function revoke(req, res) {
 
   try {
     await oauthService.revokeConnection(clientId, platform, req.user);
+    invalidateClientAssetsCache(clientId);
     res.json({ ok: true });
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
@@ -92,6 +95,7 @@ async function selectMetaPage(req, res) {
   }
   try {
     const result = await oauthService.selectMetaPage(clientId, pageId, req.user);
+    invalidateClientAssetsCache(clientId);
     res.json({ ok: true, ...result });
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
@@ -119,6 +123,7 @@ async function selectGa4Property(req, res) {
   }
   try {
     const result = await oauthService.selectGa4Property(clientId, propertyId, req.user);
+    invalidateClientAssetsCache(clientId);
     res.json({ ok: true, ...result });
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });
@@ -146,6 +151,7 @@ async function selectLinkedinOrg(req, res) {
   }
   try {
     const result = await oauthService.selectLinkedinOrg(clientId, organizationUrn, req.user);
+    invalidateClientAssetsCache(clientId);
     res.json({ ok: true, ...result });
   } catch (err) {
     res.status(err.status || 500).json({ error: err.message });

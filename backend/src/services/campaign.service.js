@@ -38,6 +38,19 @@ function invalidateCampaignCache(campaignId) {
   }
 }
 
+// Chamado ao (re)conectar/trocar uma integração — sem isso, uma lista vazia
+// buscada com token expirado (ou org/página antiga) fica presa no cache por
+// até 5 min mesmo depois da reconexão.
+function invalidateClientAssetsCache(clientId) {
+  for (const key of cache.keys()) {
+    if (key.startsWith(`campaign:assets:ig:${clientId}`) ||
+        key.startsWith(`campaign:assets:li:${clientId}`) ||
+        key.startsWith(`campaign:assets:pages:${clientId}:`)) {
+      cache.delete(key);
+    }
+  }
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function notFound(msg = "Campanha não encontrada") {
@@ -806,4 +819,5 @@ module.exports = {
   setChannels, setPosts, setPages,
   getAvailableInstagram, getAvailableLinkedin, getAvailablePages,
   getDashboard, getAiInsights,
+  invalidateClientAssetsCache,
 };
