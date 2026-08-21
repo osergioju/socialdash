@@ -1,4 +1,39 @@
-const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
+const OPENAI_URL = "https://api.openai.com/v1/responses";
+const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-5.4-mini";
+
+// ─── Helper compartilhado: chama a OpenAI (Responses API) e retorna JSON parseado ─
+async function callOpenAIJson(prompt, maxTokens = 2048, temperature = 0.35) {
+  const res = await fetch(OPENAI_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: OPENAI_MODEL,
+      input: prompt,
+      temperature,
+      max_output_tokens: maxTokens,
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`OpenAI API error ${res.status}: ${err}`);
+  }
+
+  const body = await res.json();
+  const text = extractOpenAIText(body);
+  const clean = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
+  return JSON.parse(clean);
+}
+
+function extractOpenAIText(body) {
+  if (typeof body.output_text === "string" && body.output_text) return body.output_text;
+  const message = (body.output || []).find((o) => o.type === "message");
+  const textPart = message?.content?.find((c) => c.type === "output_text");
+  return textPart?.text ?? "";
+}
 
 async function generateInsights({ clientName, ig, li, ga4 }) {
   const platforms = [];
@@ -67,30 +102,7 @@ Regras:
 - Os insights devem citar números reais dos dados fornecidos e sugerir ações concretas
 - platform deve ser exatamente um dos valores: instagram, linkedin, ga4, mixed`;
 
-  const res = await fetch(GROQ_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: "llama-3.3-70b-versatile",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.35,
-      max_tokens: 2048,
-    }),
-  });
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Groq API error ${res.status}: ${err}`);
-  }
-
-  const body = await res.json();
-  const text = body.choices?.[0]?.message?.content ?? "";
-
-  const clean = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-  return JSON.parse(clean);
+  return callOpenAIJson(prompt, 2048, 0.35);
 }
 
 async function categorizeInstagramPosts({ clientName, posts, platformLabel = "Instagram" }) {
@@ -106,56 +118,7 @@ Regras: cada post em exatamente 1 tema, índices começam em 1, temas concisos (
 Posts (índice.[mês]"legenda" l=likes c=comentários):
 ${postList}`;
 
-  const res = await fetch(GROQ_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: "llama-3.3-70b-versatile",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.3,
-      max_tokens: 2048,
-    }),
-  });
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Groq API error ${res.status}: ${err}`);
-  }
-
-  const body = await res.json();
-  const text = body.choices?.[0]?.message?.content ?? "";
-  const clean = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-  return JSON.parse(clean);
-}
-
-// ─── Helper compartilhado: chama a Groq e retorna JSON parseado ───────────────
-async function callGroqJson(prompt, maxTokens = 2048, temperature = 0.35) {
-  const res = await fetch(GROQ_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${process.env.GROQ_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: "llama-3.3-70b-versatile",
-      messages: [{ role: "user", content: prompt }],
-      temperature,
-      max_tokens: maxTokens,
-    }),
-  });
-
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Groq API error ${res.status}: ${err}`);
-  }
-
-  const body = await res.json();
-  const text = body.choices?.[0]?.message?.content ?? "";
-  const clean = text.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
-  return JSON.parse(clean);
+  return callOpenAIJson(prompt, 2048, 0.3);
 }
 
 // ─── Campanhas: insights sobre os conteúdos vinculados à campanha ─────────────
@@ -243,7 +206,7 @@ Regras:
 - Se um canal não tem conteúdos vinculados, retorne null no campo correspondente (ex: paginaMaisVisitada: null se não há páginas)
 - Se não houver dados suficientes, explique o que falta no próprio campo`;
 
-  return callGroqJson(prompt, 2500);
+  return callOpenAIJson(prompt, 2500);
 }
 
 // ─── Social Listening: analisa um lote de menções ─────────────────────────────
@@ -267,7 +230,7 @@ Regras:
 Menções:
 ${list}`;
 
-  return callGroqJson(prompt, 3000, 0.2);
+  return callOpenAIJson(prompt, 3000, 0.2);
 }
 
 // ─── Social Listening: resumo executivo do período ────────────────────────────
@@ -304,7 +267,7 @@ Retorne APENAS um JSON válido (sem markdown):
 
 Regras: português brasileiro; arrays com 2-5 itens; se não houver dados, retorne itens explicando a ausência.`;
 
-  return callGroqJson(prompt, 2500);
+  return callOpenAIJson(prompt, 2500);
 }
 
 module.exports = {
