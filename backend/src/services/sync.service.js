@@ -634,7 +634,7 @@ const LI_FUNCTIONS = {
 
 // Versão da API versionada (rest/*) do LinkedIn. Versões expiram ~1 ano; quando
 // der 426 "version not active", basta atualizar a env LINKEDIN_API_VERSION.
-const LI_VERSION = process.env.LINKEDIN_API_VERSION || "202506";
+const LI_VERSION = process.env.LINKEDIN_API_VERSION || "202608";
 
 // Indústrias são centenas e mudam — busca os nomes na API (rest/industries, só
 // retorna en_US) e cacheia em memória. O endpoint v2/industries não aceita locale.
@@ -685,6 +685,9 @@ async function fetchLinkedinPosts(token, orgUrnRaw, max = 50) {
       token,
       { "LinkedIn-Version": LI_VERSION }
     ).catch(() => null);
+    if (res && !res.elements) {
+      console.warn(`[linkedin] fetchLinkedinPosts erro (LI_VERSION=${LI_VERSION}): ${JSON.stringify(res).slice(0, 300)}`);
+    }
     const els = res?.elements || [];
     if (els.length === 0) break;
     out.push(...els);
@@ -711,6 +714,9 @@ async function fetchLinkedinPostStats(token, orgUrnRaw, postUrns) {
         token,
         { "LinkedIn-Version": LI_VERSION }
       ).catch(() => null);
+      if (res && !res.elements) {
+        console.warn(`[linkedin] fetchLinkedinPostStats erro (LI_VERSION=${LI_VERSION}): ${JSON.stringify(res).slice(0, 300)}`);
+      }
       for (const el of (res?.elements || [])) {
         const key = el.ugcPost || el.share;
         if (key) stats[key] = el.totalShareStatistics || {};
