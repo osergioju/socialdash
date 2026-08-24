@@ -12,10 +12,11 @@ async function assertOwnsClient(clientId, user) {
 // ── POST /api/client-auth/login ───────────────────────────────────────────────
 async function login(req, res) {
   try {
-    const { email, password, clientSlug } = req.body;
+    let { email, password, clientSlug } = req.body;
     if (!email || !password || !clientSlug) {
       return res.status(400).json({ error: "email, password e clientSlug são obrigatórios" });
     }
+    email = email.trim().toLowerCase();
 
     const client = await prisma.client.findUnique({ where: { slug: clientSlug } });
     if (!client) return res.status(404).json({ error: "Cliente não encontrado" });
@@ -85,13 +86,14 @@ async function listUsers(req, res) {
 // ── POST /api/client-auth/users ───────────────────────────────────────────────
 async function createUser(req, res) {
   try {
-    const { clientId, name, email, password } = req.body;
+    let { clientId, name, email, password } = req.body;
     if (!clientId || !name || !email || !password) {
       return res.status(400).json({ error: "clientId, name, email e password são obrigatórios" });
     }
     if (password.length < 6) {
       return res.status(400).json({ error: "Senha deve ter no mínimo 6 caracteres" });
     }
+    email = email.trim().toLowerCase();
     await assertOwnsClient(clientId, req.user);
 
     const hashed = await bcrypt.hash(password, 10);

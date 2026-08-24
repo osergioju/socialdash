@@ -15,12 +15,13 @@ const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
 async function main() {
-  const [, , slug, email, name, password] = process.argv;
+  const [, , slug, rawEmail, name, password] = process.argv;
 
-  if (!slug || !email || !name || !password) {
+  if (!slug || !rawEmail || !name || !password) {
     console.error("Uso: node create-client-user.js <clientSlug> <email> <nome> <senha>");
     process.exit(1);
   }
+  const email = rawEmail.trim().toLowerCase();
 
   const client = await prisma.client.findUnique({ where: { slug } });
   if (!client) {
