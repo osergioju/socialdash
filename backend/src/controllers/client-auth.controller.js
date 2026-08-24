@@ -17,16 +17,25 @@ async function login(req, res) {
       return res.status(400).json({ error: "email, password e clientSlug são obrigatórios" });
     }
     email = email.trim().toLowerCase();
+    console.log(`[client-auth] login attempt slug=${JSON.stringify(clientSlug)} email=${JSON.stringify(email)} pwLen=${password.length}`);
 
     const client = await prisma.client.findUnique({ where: { slug: clientSlug } });
-    if (!client) return res.status(404).json({ error: "Cliente não encontrado" });
+    if (!client) {
+      console.log(`[client-auth] client not found for slug=${JSON.stringify(clientSlug)}`);
+      return res.status(404).json({ error: "Cliente não encontrado" });
+    }
 
     const clientUser = await prisma.clientUser.findUnique({
       where: { clientId_email: { clientId: client.id, email } },
     });
-    if (!clientUser) return res.status(401).json({ error: "Credenciais inválidas" });
+    if (!clientUser) {
+      const allForClient = await prisma.clientUser.findMany({ where: { clientId: client.id }, select: { email: true } });
+      console.log(`[client-auth] clientUser not found clientId=${client.id} email=${JSON.stringify(email)} existingEmails=${JSON.stringify(allForClient.map(u => u.email))}`);
+      return res.status(401).json({ error: "Credenciais inválidas" });
+    }
 
     const valid = await bcrypt.compare(password, clientUser.password);
+    console.log(`[client-auth] bcrypt.compare result=${valid} hashPrefix=${clientUser.password.slice(0, 4)} hashLen=${clientUser.password.length}`);
     if (!valid) return res.status(401).json({ error: "Credenciais inválidas" });
 
     const token = jwt.sign(
@@ -97,6 +106,7 @@ async function createUser(req, res) {
     await assertOwnsClient(clientId, req.user);
 
     const hashed = await bcrypt.hash(password, 10);
+    console.log(`[client-auth] createUser clientId=${clientId} email=${JSON.stringify(email)} pwLen=${password.length} hashPrefix=${hashed.slice(0, 4)}`);
     const user = await prisma.clientUser.create({
       data: { clientId, name, email, password: hashed },
       select: { id: true, name: true, email: true, createdAt: true },
