@@ -77,12 +77,17 @@ async function getLinkedinMetrics(clientId) {
     orderBy: { createdAt: "asc" },
   });
 
-  const themes = rawLiThemes.map(({ metrics: tm, ...t }) => ({
-    ...t,
-    engajamento:  tm[0]?.engajamento  ?? null,
-    cliques:      tm[0]?.cliques      ?? null,
-    alcanceMedio: tm[0]?.alcanceMedio ?? null,
-  }));
+  const themes = rawLiThemes
+    .map(({ metrics: tm, ...t }) => ({
+      ...t,
+      engajamento:  tm[0]?.engajamento  ?? null,
+      cliques:      tm[0]?.cliques      ?? null,
+      alcanceMedio: tm[0]?.alcanceMedio ?? null,
+      posts:        tm[0]?.posts        ?? null,
+    }))
+    // Estatística por post não é permitida no tier atual da API (fica sempre 0),
+    // então o ranking usa nº de posts categorizados no tema.
+    .sort((a, b) => (b.posts ?? 0) - (a.posts ?? 0));
 
   // Industries: fetch with most-recent metric, flatten for API response
   const rawIndustries = await prisma.linkedinIndustry.findMany({

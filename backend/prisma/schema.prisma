@@ -272,6 +272,7 @@ model ThemeMetric {
   alcanceMedio      Int?
   engajamento       Int?
   cliques           Int?
+  posts             Int?
   createdAt         DateTime @default(now())
 
   @@unique([themeId, month])

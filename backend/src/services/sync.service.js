@@ -775,6 +775,10 @@ async function categorizeAndSaveLinkedinThemes(clientId, token, orgUrnRaw) {
       data: { clientId, tema: themeData.tema, icon: themeData.icon || "📌", platform: "LINKEDIN" },
     });
 
+    // engajamento/cliques/curtidas/comentarios/alcanceMedio ficam 0: o tier atual da
+    // Community Management API rejeita (403) estatísticas por post individual via
+    // organizationalEntityShareStatistics — só dá lifetime agregado da página. `posts`
+    // é o que sobra pra ranquear os temas de fato.
     await prisma.themeMetric.create({
       data: {
         themeId: theme.id, month: currentMonth,
@@ -783,6 +787,7 @@ async function categorizeAndSaveLinkedinThemes(clientId, token, orgUrnRaw) {
         curtidas:     tp.reduce((s, p) => s + p.likes, 0),
         comentarios:  tp.reduce((s, p) => s + p.comments, 0),
         alcanceMedio: Math.round(tp.reduce((s, p) => s + p.reach, 0) / tp.length),
+        posts:        tp.length,
       },
     });
   }

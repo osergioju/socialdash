@@ -115,7 +115,7 @@ export default function TemasTab() {
       </div>
 
       {/* LI Temas */}
-      <SectionHeader icon={Layers} title="Temas com Maior Relevância — LinkedIn" subtitle="Ranking por engajamento acumulado" color={C.linkedin} />
+      <SectionHeader icon={Layers} title="Temas com Maior Relevância — LinkedIn" subtitle="Ranking por número de posts · engajamento por post indisponível neste tier da API do LinkedIn" color={C.linkedin} />
       <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "22px" }}>
         {liThemes.length > 0 ? (
           <>
@@ -125,11 +125,7 @@ export default function TemasTab() {
                 <div key={i} style={{ background: C.bg, borderRadius: 10, padding: "14px", border: `1px solid ${C.border}` }}>
                   <div style={{ fontSize: 18, marginBottom: 4 }}>{t.icon}</div>
                   <div style={{ fontSize: 12, fontWeight: 700, color: C.text, marginBottom: 8 }}>{t.tema}</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                    <div><span style={{ fontSize: 9, color: C.textDim }}>Engajamento</span><div style={{ fontSize: 15, fontWeight: 700, color: C.linkedin }}>{fmt(t.engajamento)}</div></div>
-                    <div><span style={{ fontSize: 9, color: C.textDim }}>Cliques</span><div style={{ fontSize: 15, fontWeight: 700, color: C.accent }}>{fmt(t.cliques)}</div></div>
-                    <div><span style={{ fontSize: 9, color: C.textDim }}>Alcance médio</span><div style={{ fontSize: 15, fontWeight: 700, color: C.green }}>{t.alcanceMedio ?? "—"}</div></div>
-                  </div>
+                  <div><span style={{ fontSize: 9, color: C.textDim }}>Posts categorizados</span><div style={{ fontSize: 15, fontWeight: 700, color: C.linkedin }}>{fmt(t.posts)}</div></div>
                 </div>
               ))}
             </div>
