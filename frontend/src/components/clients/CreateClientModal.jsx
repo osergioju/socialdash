@@ -1,6 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { X } from "lucide-react";
 import { clientApi } from "../../services/clientApi";
+import { teamsApi } from "../../services/api";
+import { useAuth } from "../../contexts/AuthContext";
 import { C } from "../../utils/colors";
 
 const inputStyle = {
@@ -10,9 +12,17 @@ const inputStyle = {
 };
 
 export default function CreateClientModal({ onClose, onCreate }) {
-  const [form, setForm] = useState({ name: "", website: "", notes: "" });
+  const { user } = useAuth();
+  const [form, setForm] = useState({ name: "", website: "", notes: "", teamId: "" });
+  const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState("");
+
+  const needsTeamSelect = user?.role === "SUPER_ADMIN" || teams.length > 1;
+
+  useEffect(() => {
+    teamsApi.list().then(setTeams).catch(() => {});
+  }, []);
 
   function set(k, v) { setForm(f => ({ ...f, [k]: v })); }
 
@@ -21,7 +31,12 @@ export default function CreateClientModal({ onClose, onCreate }) {
     setError("");
     setLoading(true);
     try {
-      await clientApi.create({ name: form.name, website: form.website || undefined, notes: form.notes || undefined });
+      await clientApi.create({
+        name: form.name,
+        website: form.website || undefined,
+        notes: form.notes || undefined,
+        teamId: form.teamId || undefined,
+      });
       onCreate();
     } catch (err) {
       setError(err.response?.data?.error || "Erro ao criar cliente");
@@ -44,6 +59,17 @@ export default function CreateClientModal({ onClose, onCreate }) {
             <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: C.textMuted, marginBottom: 5 }}>Nome *</label>
             <input required style={inputStyle} placeholder="Ex: EnergisaPrev" value={form.name} onChange={e => set("name", e.target.value)} />
           </div>
+          {needsTeamSelect && (
+            <div>
+              <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: C.textMuted, marginBottom: 5 }}>Time *</label>
+              <select required style={inputStyle} value={form.teamId} onChange={e => set("teamId", e.target.value)}>
+                <option value="" disabled>Selecione o time</option>
+                {teams.map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <div>
             <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: C.textMuted, marginBottom: 5 }}>Site</label>
             <input style={inputStyle} type="url" placeholder="https://empresa.com.br" value={form.website} onChange={e => set("website", e.target.value)} />
