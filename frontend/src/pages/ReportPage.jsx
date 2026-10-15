@@ -1,5 +1,5 @@
 import React from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import {
   Download, ArrowLeft, RefreshCw, Users, Eye, Heart, Globe, TrendingUp, MapPin,
   AlertTriangle, ListChecks, Instagram, Linkedin, Facebook, BookOpen, UserRound,
@@ -20,6 +20,7 @@ import MetricCard from "../components/ui/MetricCard";
 import SectionHeader from "../components/ui/SectionHeader";
 import CustomTooltip from "../components/ui/CustomTooltip";
 import DataTable from "../components/ui/DataTable";
+import MonthNav from "../components/ui/MonthNav";
 import { C } from "../utils/colors";
 import { fmt, calcVar } from "../utils/format";
 
@@ -116,6 +117,7 @@ function NarrativeBlock({ label, text, color }) {
 
 export default function ReportPage() {
   const { id, slug, month: monthParam } = useParams();
+  const navigate = useNavigate();
   const month = monthParam || currentMonth();
   const isPortal = !!slug;
 
@@ -125,6 +127,7 @@ export default function ReportPage() {
   const clientId   = isPortal ? portal.client?.id   : id;
   const clientName = isPortal ? portal.client?.name : agency.client?.name;
   const backHref    = isPortal ? `/c/${slug}` : `/clients/${id}/dashboard`;
+  const reportsBase = isPortal ? `/c/${slug}/reports` : `/clients/${id}/reports`;
 
   const overview   = useOverview(clientId);
   const ig         = useInstagram(clientId);
@@ -188,6 +191,15 @@ export default function ReportPage() {
   const report = narrative.data?.report;
   const kpis = overview.data?.kpis;
 
+  // ── Seletor de mês: união dos meses disponíveis em qualquer plataforma ───
+  const allMonthsMap = new Map();
+  for (const arr of [igSorted, fbSorted, liSorted, ga4Sorted]) {
+    for (const m of arr) if (!allMonthsMap.has(m.month)) allMonthsMap.set(m.month, m.monthLabel);
+  }
+  const allMonths = Array.from(allMonthsMap, ([month, monthLabel]) => ({ month, monthLabel })).sort((a, b) => a.month.localeCompare(b.month));
+  const monthSelIdx = allMonths.findIndex((m) => m.month === month);
+  const goToMonth = (i) => navigate(`${reportsBase}/${allMonths[i].month}`);
+
   return (
     <div style={{ background: C.bg, minHeight: "100vh", color: C.text, fontFamily: "'DM Sans', -apple-system, sans-serif" }}>
       {/* Barra de ações — some na impressão */}
@@ -195,6 +207,11 @@ export default function ReportPage() {
         <Link to={backHref} style={{ display: "flex", alignItems: "center", gap: 6, color: C.textMuted, fontSize: 13, textDecoration: "none" }}>
           <ArrowLeft size={15} /> Voltar ao dashboard
         </Link>
+        {allMonths.length > 0 && (
+          <div style={{ marginBottom: -22 }}>
+            <MonthNav months={allMonths} selected={monthSelIdx < 0 ? allMonths.length - 1 : monthSelIdx} onSelect={goToMonth} color={C.primary} />
+          </div>
+        )}
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <button
             onClick={narrative.regenerate}
@@ -228,7 +245,7 @@ export default function ReportPage() {
         {kpis && (
           <Page>
             <SectionHeader icon={TrendingUp} title="Resumo Consolidado" subtitle="Comparado ao mês anterior" color={C.primary} />
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
               <MetricCard title="Seguidores IG"  value={kpis.igSeguidores?.value?.toLocaleString("pt-BR")} variation={kpis.igSeguidores?.growth}     icon={Users} color={C.instagram} />
               <MetricCard title="Seguidores LI"  value={kpis.liSeguidores?.value?.toLocaleString("pt-BR")} variation={kpis.liSeguidores?.growth}     icon={Users} color={C.linkedin} />
               <MetricCard title="Alcance IG"     value={fmt(kpis.alcanceIG?.value)}                        variation={kpis.alcanceIG?.variation}     icon={Eye}   color={C.green} />
@@ -271,7 +288,7 @@ export default function ReportPage() {
         {igMonth && (
           <Page pageBreak>
             <SectionHeader icon={Instagram} title="Instagram" subtitle={monthLabel} color={C.instagram} />
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 14 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 14 }}>
               <MetricCard title="Seguidores"  value={fmt(igMonth.seguidores)}      variation={calcVar(igSorted.map(x => x.seguidores), igI)}      icon={Users}            color={C.instagram} small />
               <MetricCard title="Alcance"     value={fmt(igMonth.alcanceOrganico)} variation={calcVar(igSorted.map(x => x.alcanceOrganico), igI)} icon={Eye}              color={C.green}     small />
               <MetricCard title="Interações"  value={fmt(igMonth.interacoes)}      variation={calcVar(igSorted.map(x => x.interacoes), igI)}      icon={Heart}            color={C.accent}    small />
@@ -354,7 +371,7 @@ export default function ReportPage() {
           <SectionHeader icon={Facebook} title="Facebook (Página)" subtitle={monthLabel} color={C.facebook} />
           {fbMonth ? (
             <>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 14 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 14 }}>
                 <MetricCard title="Seguidores"    value={fmt(fbMonth.seguidores)}          variation={calcVar(fbSorted.map(x => x.seguidores), fbI)}          icon={Users}      color={C.facebook}      small />
                 <MetricCard title="Novos"         value={fmt(fbMonth.novosSeguidores)}     variation={calcVar(fbSorted.map(x => x.novosSeguidores), fbI)}     icon={TrendingUp} color={C.green}         small />
                 <MetricCard title="Visualizações" value={fmt(fbMonth.visualizacoesPagina)} variation={calcVar(fbSorted.map(x => x.visualizacoesPagina), fbI)} icon={Eye}        color={C.accent}        small />
@@ -403,7 +420,7 @@ export default function ReportPage() {
         {liMonth && (
           <Page pageBreak>
             <SectionHeader icon={Linkedin} title="LinkedIn" subtitle={monthLabel} color={C.linkedin} />
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 14 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 14 }}>
               <MetricCard title="Seguidores"  value={fmt(liMonth.seguidores)}  variation={calcVar(liSorted.map(x => x.seguidores), liI)}  icon={Users} color={C.linkedin} small />
               <MetricCard title="Alcance"     value={fmt(liMonth.alcance)}     variation={calcVar(liSorted.map(x => x.alcance), liI)}     icon={Eye}   color={C.green}    small />
               <MetricCard title="Impressões"  value={fmt(liMonth.impressoes)}  variation={calcVar(liSorted.map(x => x.impressoes), liI)}  icon={Globe} color={C.primary}  small />
@@ -461,7 +478,7 @@ export default function ReportPage() {
         {ga4Month && (
           <Page>
             <SectionHeader icon={Globe} title="Site / Google Analytics 4" subtitle={monthLabel} color={C.ga4} />
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 14 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 14 }}>
               <MetricCard title="Usuários Ativos" value={fmt(ga4Month.usuariosAtivos)} variation={calcVar(ga4Sorted.map(x => x.usuariosAtivos), ga4I)} icon={Users}      color={C.ga4}    small />
               <MetricCard title="Sessões"         value={fmt(ga4Month.sessoes)}        variation={calcVar(ga4Sorted.map(x => x.sessoes), ga4I)}        icon={Globe}      color={C.purple} small />
               <MetricCard title="Taxa Engajam."   value={ga4Month.taxaEngajamento + "%"} icon={TrendingUp} color={C.green} small />
@@ -520,7 +537,8 @@ export default function ReportPage() {
         @media print {
           .report-no-print { display: none !important; }
           .report-page-break { page-break-before: always; }
-          body, html { background: #fff !important; }
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
+          body, html { background: ${C.bg} !important; }
         }
       `}</style>
     </div>
