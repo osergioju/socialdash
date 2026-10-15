@@ -55,7 +55,7 @@ async function getInstagramMetrics(clientId) {
   const posts = await prisma.instagramPost.findMany({
     where: { clientId, mediaType: { not: "STORY" } },
     orderBy: { timestamp: "desc" },
-    select: { id: true, mediaType: true, timestamp: true, likes: true, comments: true, reach: true, saved: true, shares: true, plays: true, month: true },
+    select: { id: true, caption: true, mediaType: true, timestamp: true, likes: true, comments: true, reach: true, saved: true, shares: true, plays: true, month: true },
   });
 
   const result = { metrics, cities, themes, posts };
