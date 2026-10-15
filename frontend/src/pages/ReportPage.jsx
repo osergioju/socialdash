@@ -12,7 +12,7 @@ import {
 import { useClient } from "../hooks/useClients";
 import { useClientAuth } from "../contexts/ClientAuthContext";
 import {
-  useOverview, useInstagram, useInstagramStories, useFacebook,
+  useInstagram, useInstagramStories, useFacebook,
   useLinkedin, useLinkedinPosts, useGa4, useGa4Detail, useNarrative,
 } from "../hooks/useMetrics";
 import { LoadingState, ErrorState } from "../components/ui/LoadingState";
@@ -64,7 +64,7 @@ function Page({ children, pageBreak }) {
 }
 
 function Card({ children, style }) {
-  return <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px 20px", marginBottom: 14, ...style }}>{children}</div>;
+  return <div className="report-avoid-break" style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px 20px", marginBottom: 14, ...style }}>{children}</div>;
 }
 
 function MiniBarList({ items, color }) {
@@ -88,7 +88,7 @@ function MiniBarList({ items, color }) {
 
 function PostCard({ type, caption, color, stats }) {
   return (
-    <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 16px", flex: "1 1 220px", minWidth: 200 }}>
+    <div className="report-avoid-break" style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 12, padding: "14px 16px", flex: "1 1 220px", minWidth: 200 }}>
       <div style={{ display: "inline-block", fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", color, background: color + "20", borderRadius: 5, padding: "2px 7px", marginBottom: 8 }}>
         {type}
       </div>
@@ -108,7 +108,7 @@ function PostCard({ type, caption, color, stats }) {
 function NarrativeBlock({ label, text, color }) {
   if (!text) return null;
   return (
-    <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderLeft: `3px solid ${color}`, borderRadius: 10, padding: "12px 16px", marginBottom: 10 }}>
+    <div className="report-avoid-break" style={{ background: C.bg, border: `1px solid ${C.border}`, borderLeft: `3px solid ${color}`, borderRadius: 10, padding: "12px 16px", marginBottom: 10 }}>
       <div style={{ fontSize: 10, color: C.textDim, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4, fontWeight: 600 }}>{label}</div>
       <p style={{ margin: 0, fontSize: 13, color: C.text, lineHeight: 1.6 }}>{text}</p>
     </div>
@@ -129,7 +129,6 @@ export default function ReportPage() {
   const backHref    = isPortal ? `/c/${slug}` : `/clients/${id}/dashboard`;
   const reportsBase = isPortal ? `/c/${slug}/reports` : `/clients/${id}/reports`;
 
-  const overview   = useOverview(clientId);
   const ig         = useInstagram(clientId);
   const igStories  = useInstagramStories(clientId);
   const fb         = useFacebook(clientId);
@@ -189,8 +188,6 @@ export default function ReportPage() {
 
   const monthLabel = igMonth?.monthLabel || liMonth?.monthLabel || ga4Month?.monthLabel || month;
   const report = narrative.data?.report;
-  const kpis = overview.data?.kpis;
-
   // ── Seletor de mês: união dos meses disponíveis em qualquer plataforma ───
   const allMonthsMap = new Map();
   for (const arr of [igSorted, fbSorted, liSorted, ga4Sorted]) {
@@ -201,7 +198,7 @@ export default function ReportPage() {
   const goToMonth = (i) => navigate(`${reportsBase}/${allMonths[i].month}`);
 
   return (
-    <div style={{ background: C.bg, minHeight: "100vh", color: C.text, fontFamily: "'DM Sans', -apple-system, sans-serif" }}>
+    <div className="report-root" style={{ background: C.bg, minHeight: "100vh", color: C.text, fontFamily: "'DM Sans', -apple-system, sans-serif" }}>
       {/* Barra de ações — some na impressão */}
       <div className="report-no-print" style={{ position: "sticky", top: 0, zIndex: 10, background: C.bg, borderBottom: `1px solid ${C.border}`, padding: "14px 24px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <Link to={backHref} style={{ display: "flex", alignItems: "center", gap: 6, color: C.textMuted, fontSize: 13, textDecoration: "none" }}>
@@ -241,17 +238,18 @@ export default function ReportPage() {
           <p style={{ fontSize: 14, color: C.textMuted, margin: 0 }}>Período de referência: {monthLabel}</p>
         </div>
 
-        {/* Resumo consolidado */}
-        {kpis && (
+        {/* Resumo consolidado — mesmos dados por mês já usados nas seções abaixo,
+            não o useOverview (que é sempre "mês mais recente", não respeita o seletor) */}
+        {(igMonth || liMonth || ga4Month) && (
           <Page>
-            <SectionHeader icon={TrendingUp} title="Resumo Consolidado" subtitle="Comparado ao mês anterior" color={C.primary} />
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
-              <MetricCard title="Seguidores IG"  value={kpis.igSeguidores?.value?.toLocaleString("pt-BR")} variation={kpis.igSeguidores?.growth}     icon={Users} color={C.instagram} />
-              <MetricCard title="Seguidores LI"  value={kpis.liSeguidores?.value?.toLocaleString("pt-BR")} variation={kpis.liSeguidores?.growth}     icon={Users} color={C.linkedin} />
-              <MetricCard title="Alcance IG"     value={fmt(kpis.alcanceIG?.value)}                        variation={kpis.alcanceIG?.variation}     icon={Eye}   color={C.green} />
-              <MetricCard title="Engajamento LI" value={fmt(kpis.engajamentoLI?.value)}                    variation={kpis.engajamentoLI?.variation} icon={Heart} color={C.accent} />
-              <MetricCard title="Views IG"       value={fmt(kpis.totalViewsIG?.value)}                     variation={kpis.totalViewsIG?.variation}  icon={Eye}   color={C.purple} />
-              <MetricCard title="Usuários Site"  value={fmt(kpis.usuariosSite?.value)}                     variation={kpis.usuariosSite?.variation}  icon={Globe} color={C.ga4} />
+            <SectionHeader icon={TrendingUp} title="Resumo Consolidado" subtitle={`${monthLabel} comparado ao mês anterior`} color={C.primary} />
+            <div className="report-avoid-break" style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+              <MetricCard title="Seguidores IG"  value={igMonth && fmt(igMonth.seguidores)}       variation={igMonth && calcVar(igSorted.map(x => x.seguidores), igI)}        icon={Users} color={C.instagram} />
+              <MetricCard title="Seguidores LI"  value={liMonth && fmt(liMonth.seguidores)}       variation={liMonth && calcVar(liSorted.map(x => x.seguidores), liI)}        icon={Users} color={C.linkedin} />
+              <MetricCard title="Alcance IG"     value={igMonth && fmt(igMonth.alcanceOrganico)}  variation={igMonth && calcVar(igSorted.map(x => x.alcanceOrganico), igI)}   icon={Eye}   color={C.green} />
+              <MetricCard title="Engajamento LI" value={liMonth && fmt(liMonth.engajamento)}      variation={liMonth && calcVar(liSorted.map(x => x.engajamento), liI)}       icon={Heart} color={C.accent} />
+              <MetricCard title="Views IG"       value={igMonth && fmt(igMonth.visualizacoes)}    variation={igMonth && calcVar(igSorted.map(x => x.visualizacoes), igI)}     icon={Eye}   color={C.purple} />
+              <MetricCard title="Usuários Site"  value={ga4Month && fmt(ga4Month.usuariosAtivos)} variation={ga4Month && calcVar(ga4Sorted.map(x => x.usuariosAtivos), ga4I)} icon={Globe} color={C.ga4} />
             </div>
           </Page>
         )}
@@ -269,7 +267,7 @@ export default function ReportPage() {
               <NarrativeBlock label="Destaque — LinkedIn"  text={report.destaqueLinkedin}  color={C.linkedin} />
               <NarrativeBlock label="Ponto de atenção"     text={report.pontoDeAtencao}    color={C.orange} />
               {Array.isArray(report.proximosPassos) && report.proximosPassos.length > 0 && (
-                <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderLeft: `3px solid ${C.green}`, borderRadius: 10, padding: "12px 16px" }}>
+                <div className="report-avoid-break" style={{ background: C.bg, border: `1px solid ${C.border}`, borderLeft: `3px solid ${C.green}`, borderRadius: 10, padding: "12px 16px" }}>
                   <div style={{ fontSize: 10, color: C.textDim, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 6, fontWeight: 600 }}>Próximos passos</div>
                   <ul style={{ margin: 0, paddingLeft: 18, fontSize: 13, color: C.text, lineHeight: 1.7 }}>
                     {report.proximosPassos.map((p, i) => <li key={i}>{p}</li>)}
@@ -288,7 +286,7 @@ export default function ReportPage() {
         {igMonth && (
           <Page pageBreak>
             <SectionHeader icon={Instagram} title="Instagram" subtitle={monthLabel} color={C.instagram} />
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 14 }}>
+            <div className="report-avoid-break" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 14 }}>
               <MetricCard title="Seguidores"  value={fmt(igMonth.seguidores)}      variation={calcVar(igSorted.map(x => x.seguidores), igI)}      icon={Users}            color={C.instagram} small />
               <MetricCard title="Alcance"     value={fmt(igMonth.alcanceOrganico)} variation={calcVar(igSorted.map(x => x.alcanceOrganico), igI)} icon={Eye}              color={C.green}     small />
               <MetricCard title="Interações"  value={fmt(igMonth.interacoes)}      variation={calcVar(igSorted.map(x => x.interacoes), igI)}      icon={Heart}            color={C.accent}    small />
@@ -371,7 +369,7 @@ export default function ReportPage() {
           <SectionHeader icon={Facebook} title="Facebook (Página)" subtitle={monthLabel} color={C.facebook} />
           {fbMonth ? (
             <>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 14 }}>
+              <div className="report-avoid-break" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 14 }}>
                 <MetricCard title="Seguidores"    value={fmt(fbMonth.seguidores)}          variation={calcVar(fbSorted.map(x => x.seguidores), fbI)}          icon={Users}      color={C.facebook}      small />
                 <MetricCard title="Novos"         value={fmt(fbMonth.novosSeguidores)}     variation={calcVar(fbSorted.map(x => x.novosSeguidores), fbI)}     icon={TrendingUp} color={C.green}         small />
                 <MetricCard title="Visualizações" value={fmt(fbMonth.visualizacoesPagina)} variation={calcVar(fbSorted.map(x => x.visualizacoesPagina), fbI)} icon={Eye}        color={C.accent}        small />
@@ -420,7 +418,7 @@ export default function ReportPage() {
         {liMonth && (
           <Page pageBreak>
             <SectionHeader icon={Linkedin} title="LinkedIn" subtitle={monthLabel} color={C.linkedin} />
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 14 }}>
+            <div className="report-avoid-break" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 14 }}>
               <MetricCard title="Seguidores"  value={fmt(liMonth.seguidores)}  variation={calcVar(liSorted.map(x => x.seguidores), liI)}  icon={Users} color={C.linkedin} small />
               <MetricCard title="Alcance"     value={fmt(liMonth.alcance)}     variation={calcVar(liSorted.map(x => x.alcance), liI)}     icon={Eye}   color={C.green}    small />
               <MetricCard title="Impressões"  value={fmt(liMonth.impressoes)}  variation={calcVar(liSorted.map(x => x.impressoes), liI)}  icon={Globe} color={C.primary}  small />
@@ -478,7 +476,7 @@ export default function ReportPage() {
         {ga4Month && (
           <Page>
             <SectionHeader icon={Globe} title="Site / Google Analytics 4" subtitle={monthLabel} color={C.ga4} />
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 14 }}>
+            <div className="report-avoid-break" style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 14 }}>
               <MetricCard title="Usuários Ativos" value={fmt(ga4Month.usuariosAtivos)} variation={calcVar(ga4Sorted.map(x => x.usuariosAtivos), ga4I)} icon={Users}      color={C.ga4}    small />
               <MetricCard title="Sessões"         value={fmt(ga4Month.sessoes)}        variation={calcVar(ga4Sorted.map(x => x.sessoes), ga4I)}        icon={Globe}      color={C.purple} small />
               <MetricCard title="Taxa Engajam."   value={ga4Month.taxaEngajamento + "%"} icon={TrendingUp} color={C.green} small />
@@ -539,6 +537,10 @@ export default function ReportPage() {
           .report-page-break { page-break-before: always; }
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; color-adjust: exact !important; }
           body, html { background: ${C.bg} !important; }
+          /* Impede que gráficos/cards/blocos de texto sejam cortados ao meio
+             entre duas páginas — sem isso o navegador corta onde calhar. */
+          .report-avoid-break { break-inside: avoid; page-break-inside: avoid; }
+          .report-root h2, .report-root h4 { break-after: avoid; page-break-after: avoid; }
         }
       `}</style>
     </div>
