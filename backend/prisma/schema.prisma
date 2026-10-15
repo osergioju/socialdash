@@ -56,33 +56,43 @@ model TeamMembership {
 // ─── Agency client management ─────────────────────────────────────────────────
 
 model Client {
-  id                 String               @id @default(cuid())
-  name               String
-  slug               String               @unique
-  logoUrl            String?
-  website            String?
-  notes              String?
-  createdById        String
-  createdBy          User                 @relation(fields: [createdById], references: [id])
-  teamId             String?
-  team               Team?                @relation(fields: [teamId], references: [id])
-  connections        PlatformConnection[]
-  clientUsers        ClientUser[]
-  instagramMetrics   InstagramMetric[]
-  linkedinMetrics    LinkedinMetric[]
-  ga4Metrics         Ga4Metric[]
-  cities             City[]
-  themes             Theme[]
-  ga4Pages           Ga4Page[]
-  ga4Origins         Ga4Origin[]
-  linkedinIndustries LinkedinIndustry[]
-  linkedinRoles      LinkedinRole[]
-  aiInsights         AiInsight[]
-  instagramPosts     InstagramPost[]
-  campaigns          Campaign[]
-  monitorings        Monitoring[]
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
+  id                    String                 @id @default(cuid())
+  name                  String
+  slug                  String                 @unique
+  logoUrl               String?
+  website               String?
+  notes                 String?
+  createdById           String
+  createdBy             User                   @relation(fields: [createdById], references: [id])
+  teamId                String?
+  team                  Team?                  @relation(fields: [teamId], references: [id])
+  connections           PlatformConnection[]
+  clientUsers           ClientUser[]
+  instagramMetrics      InstagramMetric[]
+  linkedinMetrics       LinkedinMetric[]
+  ga4Metrics            Ga4Metric[]
+  cities                City[]
+  themes                Theme[]
+  ga4Pages              Ga4Page[]
+  ga4Origins            Ga4Origin[]
+  linkedinIndustries    LinkedinIndustry[]
+  linkedinRoles         LinkedinRole[]
+  aiInsights            AiInsight[]
+  instagramPosts        InstagramPost[]
+  campaigns             Campaign[]
+  monitorings           Monitoring[]
+  facebookPageMetrics   FacebookPageMetric[]
+  facebookPosts         FacebookPost[]
+  instagramStories      InstagramStory[]
+  instagramDemographics InstagramDemographic[]
+  linkedinPosts         LinkedinPost[]
+  ga4Geo                Ga4Geo[]
+  ga4Devices            Ga4Device[]
+  ga4Channels           Ga4Channel[]
+  ga4Campaigns          Ga4Campaign[]
+  monthlyAiReports      MonthlyAiReport[]
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
 
   @@index([createdById])
   @@index([teamId])
@@ -101,7 +111,7 @@ model PlatformConnection {
   accountId    String?
   accountName  String?
   accountEmail String?
-  metadata     String?          // JSON: instagramBusinessAccountId, pageId, propertyId, organizationUrn
+  metadata     String? // JSON: instagramBusinessAccountId, pageId, propertyId, organizationUrn
   lastSyncAt   DateTime?
   connectedAt  DateTime?
   createdAt    DateTime         @default(now())
@@ -148,8 +158,8 @@ model InstagramMetric {
   id                     String   @id @default(cuid())
   clientId               String
   client                 Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  month                  String   // e.g. "2025-04"
-  monthLabel             String   // e.g. "Abril/25"
+  month                  String // e.g. "2025-04"
+  monthLabel             String // e.g. "Abril/25"
   seguidores             Int
   novosSeguidores        Int
   alcanceOrganico        Int
@@ -195,35 +205,35 @@ model LinkedinMetric {
 }
 
 model Ga4Metric {
-  id                     String   @id @default(cuid())
-  clientId               String
-  client                 Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  month                  String
-  monthLabel             String
-  usuariosAtivos         Int
-  novosUsuarios          Int
-  usuariosTotais         Int
-  sessoes                Int
-  sessoesEngajadas       Int
-  taxaEngajamento        Float
-  tempoMedioEngajamento  Int
-  tempoMedioSessao       Int?
-  viewsPorSessao         Float
-  numEventos             Int
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  id                    String   @id @default(cuid())
+  clientId              String
+  client                Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  month                 String
+  monthLabel            String
+  usuariosAtivos        Int
+  novosUsuarios         Int
+  usuariosTotais        Int
+  sessoes               Int
+  sessoesEngajadas      Int
+  taxaEngajamento       Float
+  tempoMedioEngajamento Int
+  tempoMedioSessao      Int?
+  viewsPorSessao        Float
+  numEventos            Int
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 
   @@unique([clientId, month])
   @@map("ga4_metrics")
 }
 
 model City {
-  id        String       @id @default(cuid())
-  clientId  String
-  client    Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  name      String
-  platform  Platform
-  metrics   CityMetric[]
+  id       String       @id @default(cuid())
+  clientId String
+  client   Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  name     String
+  platform Platform
+  metrics  CityMetric[]
 
   @@unique([clientId, name, platform])
   @@map("cities")
@@ -244,18 +254,19 @@ model CityMetric {
 enum Platform {
   INSTAGRAM
   LINKEDIN
+  FACEBOOK
 }
 
 model Theme {
-  id        String        @id @default(cuid())
+  id        String          @id @default(cuid())
   clientId  String
-  client    Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client    Client          @relation(fields: [clientId], references: [id], onDelete: Cascade)
   tema      String
   icon      String
   platform  Platform
   metrics   ThemeMetric[]
   posts     InstagramPost[]
-  createdAt DateTime      @default(now())
+  createdAt DateTime        @default(now())
 
   @@unique([clientId, platform, tema])
   @@map("themes")
@@ -304,9 +315,9 @@ model Ga4PageMetric {
 }
 
 model Ga4Origin {
-  id       String           @id @default(cuid())
+  id       String            @id @default(cuid())
   clientId String
-  client   Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client   Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
   fonte    String
   metrics  Ga4OriginMetric[]
 
@@ -328,11 +339,11 @@ model Ga4OriginMetric {
 }
 
 model LinkedinIndustry {
-  id        String                   @id @default(cuid())
-  clientId  String
-  client    Client                   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  nome      String
-  metrics   LinkedinIndustryMetric[]
+  id       String                   @id @default(cuid())
+  clientId String
+  client   Client                   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  nome     String
+  metrics  LinkedinIndustryMetric[]
 
   @@unique([clientId, nome])
   @@map("linkedin_industries")
@@ -351,11 +362,11 @@ model LinkedinIndustryMetric {
 }
 
 model LinkedinRole {
-  id        String               @id @default(cuid())
-  clientId  String
-  client    Client               @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  nome      String
-  metrics   LinkedinRoleMetric[]
+  id       String               @id @default(cuid())
+  clientId String
+  client   Client               @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  nome     String
+  metrics  LinkedinRoleMetric[]
 
   @@unique([clientId, nome])
   @@map("linkedin_roles")
@@ -398,11 +409,222 @@ model InstagramPost {
   @@map("instagram_posts")
 }
 
+// ─── Facebook (Página) ──────────────────────────────────────────────────────
+// Gated por aprovação do Meta para o escopo read_insights — ver oauth.service.js
+
+model FacebookPageMetric {
+  id                   String   @id @default(cuid())
+  clientId             String
+  client               Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  month                String
+  monthLabel           String
+  seguidores           Int
+  novosSeguidores      Int
+  visualizacoesPagina  Int
+  visualizadoresUnicos Int
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  @@unique([clientId, month])
+  @@map("facebook_page_metrics")
+}
+
+model FacebookPost {
+  id        String   @id @default(cuid())
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  postId    String
+  message   String?
+  mediaType String
+  timestamp DateTime
+  month     String
+  likes     Int      @default(0)
+  comments  Int      @default(0)
+  shares    Int      @default(0)
+  reach     Int      @default(0)
+  plays     Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([clientId, postId])
+  @@index([clientId])
+  @@map("facebook_posts")
+}
+
+// ─── Instagram — Stories individuais e demografia ──────────────────────────
+// O insight por story já é buscado em sync.service.js mas hoje só vira
+// agregado mensal (InstagramMetric.storiesQtd/storiesViews); estas tabelas
+// guardam o detalhe por story para o drill-down.
+
+model InstagramStory {
+  id          String   @id @default(cuid())
+  clientId    String
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  storyId     String
+  mediaType   String
+  timestamp   DateTime
+  month       String
+  views       Int      @default(0) // reach — não existe métrica "views" de story neste tier
+  exits       Int      @default(0)
+  tapsForward Int      @default(0)
+  tapsBack    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([clientId, storyId])
+  @@index([clientId])
+  @@map("instagram_stories")
+}
+
+model InstagramDemographic {
+  id        String   @id @default(cuid())
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  month     String
+  breakdown String // "age" | "gender"
+  label     String // ex: "25-34" ou "F"
+  value     Int
+  createdAt DateTime @default(now())
+
+  @@unique([clientId, month, breakdown, label])
+  @@map("instagram_demographics")
+}
+
+// ─── LinkedIn — posts individuais ───────────────────────────────────────────
+// Apenas texto/data: métricas de engajamento por post retornam 403 no tier
+// atual da API (ver sync.service.js fetchLinkedinPostStats).
+
+model LinkedinPost {
+  id          String    @id @default(cuid())
+  clientId    String
+  client      Client    @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  postId      String
+  commentary  String?
+  publishedAt DateTime?
+  month       String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([clientId, postId])
+  @@index([clientId])
+  @@map("linkedin_posts")
+}
+
+// ─── GA4 — breakdowns granulares (país/cidade, dispositivo, canal, campanha) ─
+
+model Ga4Geo {
+  id       String         @id @default(cuid())
+  clientId String
+  client   Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  pais     String
+  cidade   String
+  metrics  Ga4GeoMetric[]
+
+  @@unique([clientId, pais, cidade])
+  @@map("ga4_geo")
+}
+
+model Ga4GeoMetric {
+  id       String @id @default(cuid())
+  geoId    String
+  geo      Ga4Geo @relation(fields: [geoId], references: [id], onDelete: Cascade)
+  month    String
+  sessoes  Int?
+  usuarios Int?
+
+  @@unique([geoId, month])
+  @@map("ga4_geo_metrics")
+}
+
+model Ga4Device {
+  id        String            @id @default(cuid())
+  clientId  String
+  client    Client            @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  categoria String // mobile | desktop | tablet
+  metrics   Ga4DeviceMetric[]
+
+  @@unique([clientId, categoria])
+  @@map("ga4_devices")
+}
+
+model Ga4DeviceMetric {
+  id       String    @id @default(cuid())
+  deviceId String
+  device   Ga4Device @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  month    String
+  sessoes  Int?
+  usuarios Int?
+
+  @@unique([deviceId, month])
+  @@map("ga4_device_metrics")
+}
+
+model Ga4Channel {
+  id       String             @id @default(cuid())
+  clientId String
+  client   Client             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  canal    String // sessionDefaultChannelGroup
+  metrics  Ga4ChannelMetric[]
+
+  @@unique([clientId, canal])
+  @@map("ga4_channels")
+}
+
+model Ga4ChannelMetric {
+  id        String     @id @default(cuid())
+  channelId String
+  channel   Ga4Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  month     String
+  sessoes   Int?
+  usuarios  Int?
+
+  @@unique([channelId, month])
+  @@map("ga4_channel_metrics")
+}
+
+model Ga4Campaign {
+  id          String              @id @default(cuid())
+  clientId    String
+  client      Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  origemMidia String // sessionSourceMedium
+  metrics     Ga4CampaignMetric[]
+
+  @@unique([clientId, origemMidia])
+  @@map("ga4_campaigns")
+}
+
+model Ga4CampaignMetric {
+  id         String      @id @default(cuid())
+  campaignId String
+  campaign   Ga4Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  month      String
+  sessoes    Int?
+  usuarios   Int?
+
+  @@unique([campaignId, month])
+  @@map("ga4_campaign_metrics")
+}
+
+// ─── Relatório mensal narrativo por IA (espelha CampaignAiReport) ──────────
+
+model MonthlyAiReport {
+  id          String   @id @default(cuid())
+  clientId    String
+  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  month       String // "2026-09"
+  report      Json
+  generatedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  @@unique([clientId, month])
+  @@map("monthly_ai_reports")
+}
+
 model AiInsight {
   id             String   @id @default(cuid())
   clientId       String
   client         Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  month          String   // "2025-04"
+  month          String // "2025-04"
   canalPrincipal Json
   insights       Json
   generatedAt    DateTime @default(now())
@@ -424,7 +646,7 @@ model Campaign {
   startDate   DateTime
   endDate     DateTime
   status      CampaignStatus     @default(PLANNING)
-  color       String?            // hex, ex: "#0D9488"
+  color       String? // hex, ex: "#0D9488"
   imageUrl    String?
   objective   String?
   tags        String[]           @default([])
@@ -464,14 +686,14 @@ model CampaignPost {
   id           String    @id @default(cuid())
   campaignId   String
   campaign     Campaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  channel      String    // INSTAGRAM | LINKEDIN | futuros
-  externalId   String    // id do conteúdo na plataforma
+  channel      String // INSTAGRAM | LINKEDIN | futuros
+  externalId   String // id do conteúdo na plataforma
   caption      String?
   mediaType    String?
   thumbnailUrl String?
   permalink    String?
   publishedAt  DateTime?
-  metrics      Json?     // { reach, likes, comments, shares, saved, plays, impressions, reactions, clicks }
+  metrics      Json? // { reach, likes, comments, shares, saved, plays, impressions, reactions, clicks }
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
@@ -562,7 +784,7 @@ model ListeningSource {
   monitoring      Monitoring @relation(fields: [monitoringId], references: [id], onDelete: Cascade)
   type            String
   name            String?
-  config          Json?      // ex: { feedUrl } para RSS
+  config          Json? // ex: { feedUrl } para RSS
   enabled         Boolean    @default(true)
   lastCollectedAt DateTime?
   createdAt       DateTime   @default(now())
@@ -575,14 +797,14 @@ model Mention {
   id                String            @id @default(cuid())
   monitoringId      String
   monitoring        Monitoring        @relation(fields: [monitoringId], references: [id], onDelete: Cascade)
-  sourceType        String            // GOOGLE_NEWS | REDDIT | YOUTUBE | RSS | futuros
-  urlHash           String            // sha256(url) — deduplicação
+  sourceType        String // GOOGLE_NEWS | REDDIT | YOUTUBE | RSS | futuros
+  urlHash           String // sha256(url) — deduplicação
   url               String
   title             String?
   text              String?
   summary           String?
   author            String?
-  sourceName        String?           // veículo/site/canal
+  sourceName        String? // veículo/site/canal
   language          String?
   imageUrl          String?
   publishedAt       DateTime?
@@ -603,13 +825,13 @@ model MentionSentiment {
   mentionId      String         @unique
   mention        Mention        @relation(fields: [mentionId], references: [id], onDelete: Cascade)
   sentiment      SentimentLabel
-  score          Float          // -1 (muito negativo) a 1 (muito positivo)
+  score          Float // -1 (muito negativo) a 1 (muito positivo)
   summary        String?
   category       String?
   theme          String?
-  urgency        String?        // baixa | media | alta
+  urgency        String? // baixa | media | alta
   intent         String?
-  entities       Json?          // ["Empresa X", "Produto Y"]
+  entities       Json? // ["Empresa X", "Produto Y"]
   suggestedReply String?
   analyzedAt     DateTime       @default(now())
 
@@ -626,8 +848,8 @@ model ListeningAiReport {
   id           String     @id @default(cuid())
   monitoringId String
   monitoring   Monitoring @relation(fields: [monitoringId], references: [id], onDelete: Cascade)
-  period       String     // weekly | monthly
-  periodKey    String     // ex: "2026-W27" ou "2026-07"
+  period       String // weekly | monthly
+  periodKey    String // ex: "2026-W27" ou "2026-07"
   report       Json
   generatedAt  DateTime   @default(now())
 
@@ -642,7 +864,7 @@ model ListeningAlertRule {
   monitoringId String
   monitoring   Monitoring @relation(fields: [monitoringId], references: [id], onDelete: Cascade)
   type         String
-  config       Json?      // ex: { threshold: 10, windowHours: 24, keywords: [...] }
+  config       Json? // ex: { threshold: 10, windowHours: 24, keywords: [...] }
   enabled      Boolean    @default(false)
   createdAt    DateTime   @default(now())
 

@@ -6,6 +6,7 @@ import { useSyncStatus } from "../hooks/useSyncStatus";
 import { ClientContext } from "../contexts/ClientContext";
 import OverviewTab   from "./tabs/OverviewTab";
 import InstagramTab  from "./tabs/InstagramTab";
+import FacebookTab   from "./tabs/FacebookTab";
 import LinkedinTab   from "./tabs/LinkedinTab";
 import Ga4Tab        from "./tabs/Ga4Tab";
 import TemasTab      from "./tabs/TemasTab";
@@ -15,6 +16,7 @@ import ListeningTab  from "./tabs/ListeningTab";
 const TAB_COMPONENTS = {
   overview:  OverviewTab,
   instagram: InstagramTab,
+  facebook:  FacebookTab,
   linkedin:  LinkedinTab,
   site:      Ga4Tab,
   temas:     TemasTab,

@@ -271,6 +271,154 @@ async function fetchMediaInsightsBatch(pageToken, posts) {
   return insightsMap;
 }
 
+/**
+ * Busca um breakdown de reached_audience_demographics (ex.: age, gender).
+ * Mesmo endpoint/escopo já usado para o breakdown por cidade — nenhuma
+ * permissão nova é necessária.
+ */
+async function fetchDemographicBreakdown(pageToken, igId, breakdown) {
+  const res = await httpGet(
+    `https://graph.facebook.com/${IG_API_VERSION}/${igId}/insights` +
+    `?metric=reached_audience_demographics&metric_type=total_value&period=lifetime&timeframe=this_month&breakdown=${breakdown}`,
+    pageToken
+  ).catch(() => ({ data: [] }));
+  if (res.error) {
+    console.warn(`[sync/meta] demographics(${breakdown}) error:`, res.error.message);
+    return [];
+  }
+  return res.data?.[0]?.total_value?.breakdowns?.[0]?.results || [];
+}
+
+/**
+ * Facebook Page insights — distinto do Instagram, exige o escopo read_insights
+ * (ver oauth.service.js). Pode estar sujeito a Revisão de App do Meta; até ser
+ * aprovado, as chamadas abaixo retornam erro de permissão. Por isso esta
+ * função SEMPRE engole seus próprios erros — uma falha aqui nunca pode
+ * derrubar o restante do syncMeta (que cobre o Instagram).
+ */
+async function syncFacebookPage(clientId, pageId, pageToken, months) {
+  try {
+    const pageInfoRes = await httpGet(
+      `https://graph.facebook.com/${IG_API_VERSION}/${pageId}?fields=fan_count,followers_count,name`,
+      pageToken
+    );
+    if (pageInfoRes.error) {
+      console.warn(`[sync/fb] página indisponível (escopo read_insights ainda não aprovado?): ${pageInfoRes.error.message}`);
+      return;
+    }
+
+    for (const { year, month } of months) {
+      const monthStart = new Date(year, month - 1, 1);
+      const monthEnd = new Date(year, month, 1);
+      const mStartUnix = Math.floor(monthStart.getTime() / 1000);
+      const mEndUnix = Math.min(Math.floor(monthEnd.getTime() / 1000), mStartUnix + 30 * 24 * 3600);
+      const mk = monthKey(year, month);
+      const ml = monthLabel(year, month);
+
+      const insRes = await httpGet(
+        `https://graph.facebook.com/${IG_API_VERSION}/${pageId}/insights` +
+        `?metric=page_fan_adds,page_views_total,page_impressions_unique&period=day&since=${mStartUnix}&until=${mEndUnix}`,
+        pageToken
+      ).catch(() => ({ data: [] }));
+
+      let novosSeguidores = 0, visualizacoesPagina = 0, visualizadoresUnicos = 0;
+      for (const entry of (insRes.data || [])) {
+        const total = (entry.values || []).reduce((s, v) => s + (typeof v.value === "number" ? v.value : 0), 0);
+        if (entry.name === "page_fan_adds") novosSeguidores = total;
+        if (entry.name === "page_views_total") visualizacoesPagina = total;
+        if (entry.name === "page_impressions_unique") visualizadoresUnicos = total;
+      }
+
+      const fbData = {
+        monthLabel: ml,
+        seguidores: pageInfoRes.fan_count ?? pageInfoRes.followers_count ?? 0,
+        novosSeguidores,
+        visualizacoesPagina,
+        visualizadoresUnicos,
+      };
+      await prisma.facebookPageMetric.upsert({
+        where: { clientId_month: { clientId, month: mk } },
+        update: fbData,
+        create: { clientId, month: mk, ...fbData },
+      });
+    }
+
+    // ── Cidades com mais seguidores (snapshot, reusa City/CityMetric) ────────
+    const now = new Date();
+    const cityRes = await httpGet(
+      `https://graph.facebook.com/${IG_API_VERSION}/${pageId}/insights?metric=page_fans_city&period=lifetime`,
+      pageToken
+    ).catch(() => ({ data: [] }));
+    const cityValues = cityRes.data?.[0]?.values?.slice(-1)?.[0]?.value || {};
+    const currentMk = monthKey(now.getFullYear(), now.getMonth() + 1);
+    const topCities = Object.entries(cityValues).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    for (const [cityName, count] of topCities) {
+      let city = await prisma.city.findUnique({ where: { clientId_name_platform: { clientId, name: cityName, platform: "FACEBOOK" } } });
+      if (!city) city = await prisma.city.create({ data: { clientId, name: cityName, platform: "FACEBOOK" } });
+      await prisma.cityMetric.upsert({
+        where: { cityId_month: { cityId: city.id, month: currentMk } },
+        update: { seguidores: count },
+        create: { cityId: city.id, month: currentMk, seguidores: count },
+      });
+    }
+
+    // ── Posts da Página em destaque ───────────────────────────────────────────
+    const postsRes = await httpGet(
+      `https://graph.facebook.com/${IG_API_VERSION}/${pageId}/posts` +
+      `?fields=id,message,created_time,shares,likes.summary(true),comments.summary(true),attachments{media_type}&limit=25`,
+      pageToken
+    ).catch(() => ({ data: [] }));
+    const posts = postsRes.data || [];
+
+    const fbInsightsMap = {};
+    const FB_POST_METRICS = "post_impressions,post_impressions_unique,post_engaged_users";
+    for (let i = 0; i < posts.length; i += 50) {
+      const batch = posts.slice(i, i + 50);
+      const requests = batch.map((p) => ({ relative_url: `${p.id}/insights?metric=${FB_POST_METRICS}` }));
+      const batchResults = await httpFacebookBatch(pageToken, requests).catch(() => []);
+      for (let j = 0; j < batch.length; j++) {
+        const item = batchResults[j];
+        if (!item || item.code !== 200) continue;
+        try {
+          const body = JSON.parse(item.body);
+          const ins = {};
+          for (const metric of (body.data || [])) {
+            const val = metric.values?.[0]?.value ?? 0;
+            ins[metric.name] = typeof val === "number" ? val : 0;
+          }
+          fbInsightsMap[batch[j].id] = ins;
+        } catch { /* ignora item malformado */ }
+      }
+    }
+
+    for (const p of posts) {
+      const ts = new Date(p.created_time);
+      const pmk = monthKey(ts.getFullYear(), ts.getMonth() + 1);
+      const ins = fbInsightsMap[p.id] || {};
+      const postData = {
+        message: p.message || null,
+        mediaType: p.attachments?.data?.[0]?.media_type || "status",
+        timestamp: ts,
+        month: pmk,
+        likes: p.likes?.summary?.total_count ?? 0,
+        comments: p.comments?.summary?.total_count ?? 0,
+        shares: p.shares?.count ?? 0,
+        reach: ins.post_impressions_unique ?? 0,
+        plays: 0,
+      };
+      await prisma.facebookPost.upsert({
+        where: { clientId_postId: { clientId, postId: p.id } },
+        update: postData,
+        create: { clientId, postId: p.id, ...postData },
+      });
+    }
+
+    console.log(`[sync/fb] página sincronizada — ${months.length} meses, ${posts.length} posts, ${topCities.length} cidades`);
+  } catch (e) {
+    console.error("[sync/fb] falhou (não bloqueia o resto do sync):", e.message);
+  }
+}
+
 async function syncMeta(clientId, conn) {
   const token = await getValidToken(conn);
   const meta = conn.metadata ? JSON.parse(conn.metadata) : {};
@@ -482,6 +630,9 @@ async function syncMeta(clientId, conn) {
     }
   }
 
+  // ── Facebook Page (gated em read_insights — nunca bloqueia o Instagram) ───
+  await syncFacebookPage(clientId, pageId, pageToken, months);
+
   // ── Cidades (snapshot do mês atual) ──────────────────────────────────────
   // reached_audience_demographics também requer metric_type=total_value
   const audienceRes = await httpGet(
@@ -512,6 +663,21 @@ async function syncMeta(clientId, conn) {
     }
   }
 
+  // ── Demografia de audiência: idade e gênero (snapshot do mês atual) ──────
+  for (const breakdown of ["age", "gender"]) {
+    const rows = await fetchDemographicBreakdown(pageToken, igId, breakdown);
+    for (const entry of rows) {
+      const label = entry.dimension_values?.[0] || "Desconhecido";
+      const value = entry.value || 0;
+      await prisma.instagramDemographic.upsert({
+        where: { clientId_month_breakdown_label: { clientId, month: monthKey(now.getFullYear(), now.getMonth() + 1), breakdown, label } },
+        update: { value },
+        create: { clientId, month: monthKey(now.getFullYear(), now.getMonth() + 1), breakdown, label, value },
+      });
+    }
+    console.log(`[sync/meta] demographics(${breakdown}) — ${rows.length} entradas`);
+  }
+
   // ── Salva posts individuais (para categorização por IA) ──────────────────
   for (const p of filteredPosts) {
     if (p.media_type === "STORY") continue;
@@ -536,6 +702,27 @@ async function syncMeta(clientId, conn) {
     } else {
       await prisma.instagramPost.create({ data: { clientId, postId: p.id, ...postData } });
     }
+  }
+
+  // ── Salva stories individuais (drill-down) ────────────────────────────────
+  // O endpoint /stories só retorna stories ainda ativas (24h) — o histórico do
+  // drill-down se acumula sync a sync, igual ao padrão já usado para LinkedIn.
+  for (const s of stories) {
+    const ts = new Date(s.timestamp);
+    const mk = monthKey(ts.getFullYear(), ts.getMonth() + 1);
+    const ins = insightsMap[s.id] || {};
+    const storyData = {
+      mediaType: s.media_type,
+      timestamp: ts,
+      month: mk,
+      views: ins.reach ?? 0,
+      exits: ins.exits ?? 0,
+      tapsForward: ins.taps_forward ?? 0,
+      tapsBack: ins.taps_back ?? 0,
+    };
+    const existingStory = await prisma.instagramStory.findUnique({ where: { clientId_storyId: { clientId, storyId: s.id } } });
+    if (existingStory) await prisma.instagramStory.update({ where: { id: existingStory.id }, data: storyData });
+    else await prisma.instagramStory.create({ data: { clientId, storyId: s.id, ...storyData } });
   }
 
   // ── Categoriza posts por tema via IA (async, não bloqueia o sync) ─────────
@@ -730,6 +917,21 @@ async function fetchLinkedinPostStats(token, orgUrnRaw, postUrns) {
 async function categorizeAndSaveLinkedinThemes(clientId, token, orgUrnRaw) {
   const client = await prisma.client.findUnique({ where: { id: clientId }, select: { name: true } });
   const rawPosts = await fetchLinkedinPosts(token, orgUrnRaw, 50);
+
+  // ── Salva posts individuais do LinkedIn (aba "Posts em Destaque") ─────────
+  // Só texto/data: métricas de engajamento por post retornam 403 neste tier
+  // da API (ver fetchLinkedinPostStats) — persiste mesmo assim pra listar.
+  for (const p of rawPosts) {
+    const d = new Date(p.publishedAt || p.createdAt || Date.now());
+    const mk = monthKey(d.getFullYear(), d.getMonth() + 1);
+    const postData = { commentary: p.commentary || null, publishedAt: d, month: mk };
+    await prisma.linkedinPost.upsert({
+      where: { clientId_postId: { clientId, postId: p.id } },
+      update: postData,
+      create: { clientId, postId: p.id, ...postData },
+    });
+  }
+
   const withText = rawPosts.filter((p) => (p.commentary || "").trim().length > 20);
   if (withText.length < 3) {
     console.log(`[categorize/li] client=${clientId} — menos de 3 posts com texto, pulando`);
@@ -983,6 +1185,16 @@ async function syncGa4(clientId, conn) {
   // consumirem todo o orçamento de linhas, zerando os meses recentes.
   const pagesMap = {};
   const originsMap = {};
+  // Breakdowns novos (país/cidade, dispositivo, canal, campanha) ficam
+  // restritos aos últimos 6 meses — cada um é mais um loop mês-a-mês (mesmo
+  // motivo do limit global do GA4), então 12 meses x 4 breakdowns pesaria
+  // demais na cota diária da propriedade. Loop de páginas/origens continua 12m.
+  const geoMap = {};
+  const deviceMap = {};
+  const channelMap = {};
+  const campaignMap = {};
+  const ga4DetailStart = new Date(_now.getFullYear(), _now.getMonth() - 6, 1);
+  let ga4CallCount = 1; // mainReport já contabilizado
   const monthCursor = new Date(_now.getFullYear(), _now.getMonth() - 12, 1);
   const monthCursorEnd = new Date(_now.getFullYear(), _now.getMonth(), 1);
   while (monthCursor <= monthCursorEnd) {
@@ -1030,9 +1242,58 @@ async function syncGa4(clientId, conn) {
       const tempoMedio  = Math.round(parseFloat(row.metricValues?.[2]?.value || "0") / Math.max(users, 1));
       return { fonte, sess, taxaEng, tempoMedio };
     });
+    ga4CallCount += 2;
+
+    if (monthCursor >= ga4DetailStart) {
+      const detailReport = (dimensionName) => httpPost(
+        `https://analyticsdata.googleapis.com/v1beta/${propertyId}:runReport`, token, {
+          dateRanges: [{ startDate: monthStart, endDate: monthEnd }],
+          dimensions: [{ name: dimensionName }],
+          metrics: [{ name: "sessions" }, { name: "activeUsers" }],
+          orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
+          limit: 10,
+        }
+      );
+      const [geoResp, deviceResp, channelResp, campaignResp] = await Promise.all([
+        httpPost(`https://analyticsdata.googleapis.com/v1beta/${propertyId}:runReport`, token, {
+          dateRanges: [{ startDate: monthStart, endDate: monthEnd }],
+          dimensions: [{ name: "country" }, { name: "city" }],
+          metrics: [{ name: "sessions" }, { name: "activeUsers" }],
+          orderBys: [{ metric: { metricName: "sessions" }, desc: true }],
+          limit: 10,
+        }),
+        detailReport("deviceCategory"),
+        detailReport("sessionDefaultChannelGroup"),
+        detailReport("sessionSourceMedium"),
+      ]);
+      ga4CallCount += 4;
+
+      geoMap[mk] = (geoResp.rows || []).map((row) => ({
+        pais: row.dimensionValues?.[0]?.value || "(not set)",
+        cidade: row.dimensionValues?.[1]?.value || "(not set)",
+        sessoes: Math.round(parseFloat(row.metricValues?.[0]?.value || "0")),
+        usuarios: Math.round(parseFloat(row.metricValues?.[1]?.value || "0")),
+      }));
+      deviceMap[mk] = (deviceResp.rows || []).map((row) => ({
+        categoria: row.dimensionValues?.[0]?.value || "(not set)",
+        sessoes: Math.round(parseFloat(row.metricValues?.[0]?.value || "0")),
+        usuarios: Math.round(parseFloat(row.metricValues?.[1]?.value || "0")),
+      }));
+      channelMap[mk] = (channelResp.rows || []).map((row) => ({
+        canal: row.dimensionValues?.[0]?.value || "(not set)",
+        sessoes: Math.round(parseFloat(row.metricValues?.[0]?.value || "0")),
+        usuarios: Math.round(parseFloat(row.metricValues?.[1]?.value || "0")),
+      }));
+      campaignMap[mk] = (campaignResp.rows || []).map((row) => ({
+        origemMidia: row.dimensionValues?.[0]?.value || "(not set)",
+        sessoes: Math.round(parseFloat(row.metricValues?.[0]?.value || "0")),
+        usuarios: Math.round(parseFloat(row.metricValues?.[1]?.value || "0")),
+      }));
+    }
 
     monthCursor.setMonth(monthCursor.getMonth() + 1);
   }
+  console.log(`[ga4] chamadas de API neste sync: ${ga4CallCount} (cota padrão: 25k tokens/propriedade/dia)`);
 
   // Persist each month
   let savedMonths = 0;
@@ -1077,6 +1338,46 @@ async function syncGa4(clientId, conn) {
       const existingOm = await prisma.ga4OriginMetric.findUnique({ where: { originId_month: { originId: origin.id, month: mk } } });
       if (existingOm) await prisma.ga4OriginMetric.update({ where: { id: existingOm.id }, data: { sessoes: sess, taxaEng, tempoMedio } });
       else await prisma.ga4OriginMetric.create({ data: { originId: origin.id, month: mk, sessoes: sess, taxaEng, tempoMedio } });
+    }
+
+    for (const { pais, cidade, sessoes, usuarios } of geoMap[mk] || []) {
+      let geo = await prisma.ga4Geo.findUnique({ where: { clientId_pais_cidade: { clientId, pais, cidade } } });
+      if (!geo) geo = await prisma.ga4Geo.create({ data: { clientId, pais, cidade } });
+      await prisma.ga4GeoMetric.upsert({
+        where: { geoId_month: { geoId: geo.id, month: mk } },
+        update: { sessoes, usuarios },
+        create: { geoId: geo.id, month: mk, sessoes, usuarios },
+      });
+    }
+
+    for (const { categoria, sessoes, usuarios } of deviceMap[mk] || []) {
+      let device = await prisma.ga4Device.findUnique({ where: { clientId_categoria: { clientId, categoria } } });
+      if (!device) device = await prisma.ga4Device.create({ data: { clientId, categoria } });
+      await prisma.ga4DeviceMetric.upsert({
+        where: { deviceId_month: { deviceId: device.id, month: mk } },
+        update: { sessoes, usuarios },
+        create: { deviceId: device.id, month: mk, sessoes, usuarios },
+      });
+    }
+
+    for (const { canal, sessoes, usuarios } of channelMap[mk] || []) {
+      let channel = await prisma.ga4Channel.findUnique({ where: { clientId_canal: { clientId, canal } } });
+      if (!channel) channel = await prisma.ga4Channel.create({ data: { clientId, canal } });
+      await prisma.ga4ChannelMetric.upsert({
+        where: { channelId_month: { channelId: channel.id, month: mk } },
+        update: { sessoes, usuarios },
+        create: { channelId: channel.id, month: mk, sessoes, usuarios },
+      });
+    }
+
+    for (const { origemMidia, sessoes, usuarios } of campaignMap[mk] || []) {
+      let campaign = await prisma.ga4Campaign.findUnique({ where: { clientId_origemMidia: { clientId, origemMidia } } });
+      if (!campaign) campaign = await prisma.ga4Campaign.create({ data: { clientId, origemMidia } });
+      await prisma.ga4CampaignMetric.upsert({
+        where: { campaignId_month: { campaignId: campaign.id, month: mk } },
+        update: { sessoes, usuarios },
+        create: { campaignId: campaign.id, month: mk, sessoes, usuarios },
+      });
     }
 
     savedMonths++;

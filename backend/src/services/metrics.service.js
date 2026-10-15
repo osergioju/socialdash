@@ -1,5 +1,5 @@
 const prisma = require("../config/prisma");
-const { generateInsights } = require("./gemini.service");
+const { generateInsights, generateMonthlyNarrative } = require("./gemini.service");
 
 // ─── In-memory TTL cache (5 min) ──────────────────────────────────────────────
 const CACHE_TTL = 5 * 60 * 1000;
@@ -50,7 +50,87 @@ async function getInstagramMetrics(clientId) {
     alcanceMedio:      tm[0]?.alcanceMedio      ?? null,
   }));
 
-  const result = { metrics, cities, themes };
+  // Posts crus (sem STORY) — usados pelo frontend para "melhor dia/horário
+  // pra postar", calculado no componente a partir do timestamp + engajamento.
+  const posts = await prisma.instagramPost.findMany({
+    where: { clientId, mediaType: { not: "STORY" } },
+    orderBy: { timestamp: "desc" },
+    select: { id: true, mediaType: true, timestamp: true, likes: true, comments: true, reach: true, saved: true, shares: true, plays: true, month: true },
+  });
+
+  const result = { metrics, cities, themes, posts };
+  cacheSet(key, result);
+  return result;
+}
+
+// ─── Instagram — Stories individuais e demografia ──────────────────────────
+async function getInstagramStories(clientId) {
+  const key = `ig-stories:${clientId}`;
+  const cached = cacheGet(key);
+  if (cached) return cached;
+
+  const stories = await prisma.instagramStory.findMany({
+    where: { clientId },
+    orderBy: { timestamp: "desc" },
+    take: 60,
+  });
+
+  const demographics = await prisma.instagramDemographic.findMany({
+    where: { clientId },
+    orderBy: { month: "desc" },
+  });
+
+  // Só o snapshot mais recente — é um retrato do mês atual, não série histórica.
+  const latestMonth = demographics[0]?.month ?? null;
+  const age = demographics.filter((d) => d.breakdown === "age" && d.month === latestMonth);
+  const gender = demographics.filter((d) => d.breakdown === "gender" && d.month === latestMonth);
+
+  const result = { stories, demographics: { age, gender } };
+  cacheSet(key, result);
+  return result;
+}
+
+// ─── Facebook (Página) ──────────────────────────────────────────────────────
+// Gated por aprovação do Meta (read_insights) — pode voltar vazio até lá.
+async function getFacebookMetrics(clientId) {
+  const key = `facebook:${clientId}`;
+  const cached = cacheGet(key);
+  if (cached) return cached;
+
+  const metrics = await prisma.facebookPageMetric.findMany({
+    where: { clientId },
+    orderBy: { month: "asc" },
+  });
+
+  const posts = await prisma.facebookPost.findMany({
+    where: { clientId },
+    orderBy: { timestamp: "desc" },
+    take: 25,
+  });
+
+  const cities = await prisma.city.findMany({
+    where: { clientId, platform: "FACEBOOK" },
+    include: { metrics: { orderBy: { month: "asc" } } },
+  });
+
+  const result = { metrics, posts, cities };
+  cacheSet(key, result);
+  return result;
+}
+
+// ─── LinkedIn — posts individuais ───────────────────────────────────────────
+async function getLinkedinPosts(clientId) {
+  const key = `li-posts:${clientId}`;
+  const cached = cacheGet(key);
+  if (cached) return cached;
+
+  const posts = await prisma.linkedinPost.findMany({
+    where: { clientId },
+    orderBy: { publishedAt: "desc" },
+    take: 50,
+  });
+
+  const result = { posts };
   cacheSet(key, result);
   return result;
 }
@@ -135,6 +215,25 @@ async function getGa4Metrics(clientId) {
   });
 
   const result = { metrics, pages, origins };
+  cacheSet(key, result);
+  return result;
+}
+
+// ─── GA4 — breakdowns granulares (país/cidade, dispositivo, canal, campanha) ─
+// Só tem dado nos últimos 6 meses (ver syncGa4) — meses mais antigos vêm vazios.
+async function getGa4Detail(clientId) {
+  const key = `ga4-detail:${clientId}`;
+  const cached = cacheGet(key);
+  if (cached) return cached;
+
+  const [geo, devices, channels, campaigns] = await Promise.all([
+    prisma.ga4Geo.findMany({ where: { clientId }, include: { metrics: { orderBy: { month: "asc" } } } }),
+    prisma.ga4Device.findMany({ where: { clientId }, include: { metrics: { orderBy: { month: "asc" } } } }),
+    prisma.ga4Channel.findMany({ where: { clientId }, include: { metrics: { orderBy: { month: "asc" } } } }),
+    prisma.ga4Campaign.findMany({ where: { clientId }, include: { metrics: { orderBy: { month: "asc" } } } }),
+  ]);
+
+  const result = { geo, devices, channels, campaigns };
   cacheSet(key, result);
   return result;
 }
@@ -256,4 +355,51 @@ async function getAiInsights(clientId, forceRegenerate = false) {
   return { ...saved, cached: false };
 }
 
-module.exports = { getInstagramMetrics, getLinkedinMetrics, getGa4Metrics, getOverview, getAiInsights, invalidateCache };
+// ─── Narrativa mensal por IA (relatório completo) ──────────────────────────
+// Espelha getAiInsights, mas por mês específico (não só "o mês mais recente")
+// e cruzando as 4 plataformas — usada pela página de relatório/exportação.
+async function getMonthlyNarrative(clientId, month, forceRegenerate = false) {
+  const now = new Date();
+  const targetMonth = month || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+  if (!forceRegenerate) {
+    const existing = await prisma.monthlyAiReport.findUnique({
+      where: { clientId_month: { clientId, month: targetMonth } },
+    });
+    if (existing) {
+      const ageDays = (now - new Date(existing.generatedAt)) / (1000 * 60 * 60 * 24);
+      if (ageDays < STALE_DAYS) return { ...existing, cached: true };
+    }
+  }
+
+  const client = await prisma.client.findUnique({ where: { id: clientId }, select: { name: true } });
+
+  const [ig, li, fb, ga4, igStories, liPosts] = await Promise.all([
+    prisma.instagramMetric.findUnique({ where: { clientId_month: { clientId, month: targetMonth } } }),
+    prisma.linkedinMetric.findUnique({ where: { clientId_month: { clientId, month: targetMonth } } }),
+    prisma.facebookPageMetric.findUnique({ where: { clientId_month: { clientId, month: targetMonth } } }),
+    prisma.ga4Metric.findUnique({ where: { clientId_month: { clientId, month: targetMonth } } }),
+    prisma.instagramStory.findMany({ where: { clientId, month: targetMonth } }),
+    prisma.linkedinPost.findMany({ where: { clientId, month: targetMonth } }),
+  ]);
+
+  const generated = await generateMonthlyNarrative({
+    clientName: client?.name ?? "Cliente",
+    month: targetMonth,
+    ig, li, fb, ga4, igStories, liPosts,
+  });
+
+  const saved = await prisma.monthlyAiReport.upsert({
+    where: { clientId_month: { clientId, month: targetMonth } },
+    update: { report: generated, generatedAt: now },
+    create: { clientId, month: targetMonth, report: generated },
+  });
+
+  return { ...saved, cached: false };
+}
+
+module.exports = {
+  getInstagramMetrics, getLinkedinMetrics, getGa4Metrics, getOverview, getAiInsights,
+  getInstagramStories, getFacebookMetrics, getLinkedinPosts, getGa4Detail, getMonthlyNarrative,
+  invalidateCache,
+};

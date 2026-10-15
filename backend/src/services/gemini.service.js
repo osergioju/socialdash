@@ -270,7 +270,65 @@ Regras: português brasileiro; arrays com 2-5 itens; se não houver dados, retor
   return callOpenAIJson(prompt, 2500);
 }
 
+// ─── Relatório mensal narrativo (página de exportação) ─────────────────────
+// Cobre as 4 plataformas de um mês específico (não só "o mês mais recente"
+// como generateInsights) e inclui o detalhe de stories/posts do mês.
+async function generateMonthlyNarrative({ clientName, month, ig, li, fb, ga4, igStories, liPosts }) {
+  const igBlock = ig ? `
+## Instagram (${month})
+- Seguidores: ${ig.seguidores} (novos: ${ig.novosSeguidores})
+- Alcance orgânico: ${ig.alcanceOrganico} | Visualizações: ${ig.visualizacoes}
+- Interações: ${ig.interacoes} | Visitas ao perfil: ${ig.visitasPerfil}
+- Reels: ${ig.reelsQtd} publicados, alcance ${ig.reelsAlcance}, interações ${ig.reelsInteracoes}
+- Stories: ${ig.storiesQtd} publicados, ${ig.storiesViews} views (${(igStories || []).length} com detalhe individual no banco)
+- Posts: curtidas ${ig.curtidasPosts}, comentários ${ig.comentariosPosts}, compartilhamentos ${ig.compartilhamentosPosts}, salvamentos ${ig.salvamentosPosts}
+` : "";
+
+  const liBlock = li ? `
+## LinkedIn (${month})
+- Seguidores: ${li.seguidores} (novos: ${li.novosSeguidores})
+- Alcance: ${li.alcance} | Impressões: ${li.impressoes}
+- Engajamento: ${li.engajamento} | Cliques: ${li.cliques} | Reações: ${li.reacoes}
+- Postagens: ${li.postagens} (${(liPosts || []).length} com texto individual no banco — sem métricas por post neste tier da API)
+` : "";
+
+  const fbBlock = fb ? `
+## Facebook — Página (${month})
+- Seguidores: ${fb.seguidores} (novos: ${fb.novosSeguidores})
+- Visualizações da página: ${fb.visualizacoesPagina} | Visualizadores únicos: ${fb.visualizadoresUnicos}
+` : "";
+
+  const ga4Block = ga4 ? `
+## Site / GA4 (${month})
+- Usuários ativos: ${ga4.usuariosAtivos} (novos: ${ga4.novosUsuarios})
+- Sessões: ${ga4.sessoes} (engajadas: ${ga4.sessoesEngajadas})
+- Taxa de engajamento: ${(ga4.taxaEngajamento).toFixed(1)}%
+- Tempo médio de engajamento: ${ga4.tempoMedioEngajamento}s
+` : "";
+
+  const prompt = `Você é a pessoa redatora do relatório mensal de redes sociais e performance digital da agência para o cliente "${clientName}", mês de referência ${month}. Escreva em português brasileiro, tom direto e consultivo (não robótico), como quem está apresentando o mês para o cliente.
+
+${igBlock}${liBlock}${fbBlock}${ga4Block}
+Retorne APENAS um JSON válido (sem markdown, sem blocos de código) com esta estrutura:
+{
+  "resumoMes": "parágrafo de 3-5 frases resumindo o mês com números reais, tom consultivo",
+  "destaqueInstagram": "1-2 frases sobre o destaque do Instagram no mês, ou null se não houver dado",
+  "destaqueLinkedin": "1-2 frases sobre o destaque do LinkedIn no mês, ou null se não houver dado",
+  "destaqueFacebook": "1-2 frases sobre o destaque do Facebook no mês, ou null se não houver dado",
+  "pontoDeAtencao": "1-2 frases sobre o que precisa de atenção/decisão no próximo mês",
+  "proximosPassos": ["recomendação acionável e concreta para o próximo mês", "..."]
+}
+
+Regras:
+- Cite números reais dos dados fornecidos, nunca invente números
+- destaqueInstagram/destaqueLinkedin/destaqueFacebook devem ser null (não string vazia) quando a plataforma não tiver dados acima
+- proximosPassos: 2-4 itens`;
+
+  return callOpenAIJson(prompt, 2000, 0.4);
+}
+
 module.exports = {
   generateInsights, categorizeInstagramPosts,
   generateCampaignInsights, analyzeMentions, generateListeningSummary,
+  generateMonthlyNarrative,
 };

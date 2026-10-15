@@ -1,7 +1,7 @@
 import React, { useState } from "react";
-import { Users, Eye, Heart, MousePointerClick, BarChart3, TrendingUp, MapPin, Zap } from "lucide-react";
+import { Users, Eye, Heart, MousePointerClick, BarChart3, TrendingUp, MapPin, Zap, FileText } from "lucide-react";
 import { ComposedChart, LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from "recharts";
-import { useLinkedin } from "../../hooks/useMetrics";
+import { useLinkedin, useLinkedinPosts } from "../../hooks/useMetrics";
 import { useClientContext } from "../../contexts/ClientContext";
 import { LoadingState, ErrorState } from "../../components/ui/LoadingState";
 import MetricCard from "../../components/ui/MetricCard";
@@ -37,6 +37,7 @@ function InlineBarList({ items, valueKey, color }) {
 export default function LinkedinTab() {
   const clientId = useClientContext();
   const { data, loading, error } = useLinkedin(clientId);
+  const postsHook = useLinkedinPosts(clientId);
   // Inicia em Infinity para que Math.min(Infinity, length-1) selecione sempre o mês mais recente
   const [mi, setMi] = useState(Infinity);
 
@@ -175,6 +176,25 @@ export default function LinkedinTab() {
           </ComposedChart>
         </ResponsiveContainer>
       </div>
+
+      {/* Posts em Destaque */}
+      {(postsHook.data?.posts?.length > 0) && (
+        <>
+          <SectionHeader icon={FileText} title="Posts em Destaque" subtitle="Métricas de engajamento por post individual não estão disponíveis neste tier da API do LinkedIn (ver aba Temas)" color={C.linkedin} />
+          <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px", display: "flex", flexDirection: "column", gap: 10 }}>
+            {postsHook.data.posts.slice(0, 15).map((p, i) => (
+              <div key={p.id || i} style={{ display: "flex", gap: 14, padding: "10px 0", borderBottom: i < 14 ? `1px solid ${C.border}66` : "none" }}>
+                <span style={{ fontSize: 11, color: C.textDim, fontFamily: "monospace", whiteSpace: "nowrap", minWidth: 70 }}>
+                  {p.publishedAt ? new Date(p.publishedAt).toLocaleDateString("pt-BR") : "—"}
+                </span>
+                <span style={{ fontSize: 12, color: C.text, lineHeight: 1.5 }}>
+                  {(p.commentary || "(sem texto)").slice(0, 160).replace(/\n/g, " ")}{(p.commentary || "").length > 160 ? "…" : ""}
+                </span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </>
   );
 }

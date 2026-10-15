@@ -28,7 +28,13 @@ const PLATFORM_CONFIG = {
   META: {
     authUrl: "https://www.facebook.com/dialog/oauth",
     tokenUrl: "https://graph.facebook.com/v19.0/oauth/access_token",
-    scopes: "pages_show_list,instagram_basic,instagram_manage_insights,instagram_manage_comments,pages_read_engagement,business_management",
+    // read_insights: necessário para métricas de PÁGINA do Facebook (distinto do
+    // Instagram, que já funciona com os escopos abaixo). Pode exigir Revisão de
+    // App do Meta antes de ser concedido de fato — syncFacebookPage degrada
+    // graciosamente (não derruba o resto do sync) enquanto isso. IMPORTANTE:
+    // mudar este escopo invalida o consentimento de conexões META já CONNECTED —
+    // clientes existentes precisam reconectar após o deploy desta mudança.
+    scopes: "pages_show_list,instagram_basic,instagram_manage_insights,instagram_manage_comments,pages_read_engagement,business_management,read_insights",
     clientId: () => process.env.META_APP_ID,
     secret: () => process.env.META_APP_SECRET,
     redirectPath: "/oauth/meta/callback",

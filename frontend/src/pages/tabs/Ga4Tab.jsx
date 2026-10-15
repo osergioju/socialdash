@@ -1,7 +1,7 @@
 import React, { useState } from "react";
-import { Users, Eye, Globe, Activity, Target, Zap, Clock, Monitor, TrendingUp, FileText, Link2, BarChart2 } from "lucide-react";
+import { Users, Eye, Globe, Activity, Target, Zap, Clock, Monitor, TrendingUp, FileText, Link2, BarChart2, MapPin, Smartphone, Route, Megaphone } from "lucide-react";
 import { ComposedChart, AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Cell } from "recharts";
-import { useGa4 } from "../../hooks/useMetrics";
+import { useGa4, useGa4Detail } from "../../hooks/useMetrics";
 import { useClientContext } from "../../contexts/ClientContext";
 import { LoadingState, ErrorState } from "../../components/ui/LoadingState";
 import MetricCard from "../../components/ui/MetricCard";
@@ -12,9 +12,23 @@ import MonthNav from "../../components/ui/MonthNav";
 import { C } from "../../utils/colors";
 import { fmt, calcVar } from "../../utils/format";
 
+// Top-N por mês para os breakdowns granulares (país/cidade, dispositivo, canal,
+// campanha) — só têm dado nos últimos 6 meses (ver syncGa4/getGa4Detail).
+function topDetailRows(items, labelFn, month) {
+  return items
+    .map((it) => {
+      const met = it.metrics.find((m) => m.month === month);
+      return met ? { label: labelFn(it), sessoes: met.sessoes ?? 0, usuarios: met.usuarios ?? 0 } : null;
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.sessoes - a.sessoes)
+    .slice(0, 10);
+}
+
 export default function Ga4Tab() {
   const clientId = useClientContext();
   const { data, loading, error } = useGa4(clientId);
+  const detailHook = useGa4Detail(clientId);
   const [mi, setMi] = useState(Infinity);
   const [showConsolidado, setShowConsolidado] = useState(false);
 
@@ -125,6 +139,14 @@ export default function Ga4Tab() {
   });
 
   const sectionSub = showConsolidado ? consolPeriodo : metrics[safeMi]?.monthLabel;
+
+  // ── Breakdowns granulares (país/cidade, dispositivo, canal, campanha) ──────
+  const detail = detailHook.data;
+  const geoRows      = detail ? topDetailRows(detail.geo,      (g) => `${g.cidade}, ${g.pais}`, monthKey) : [];
+  const deviceRows   = detail ? topDetailRows(detail.devices,  (d) => d.categoria,               monthKey) : [];
+  const channelRows  = detail ? topDetailRows(detail.channels, (c) => c.canal,                   monthKey) : [];
+  const campaignRows = detail ? topDetailRows(detail.campaigns,(c) => c.origemMidia,              monthKey) : [];
+  const hasDetail = !showConsolidado && (geoRows.length || deviceRows.length || channelRows.length || campaignRows.length);
 
   return (
     <>
@@ -270,6 +292,39 @@ export default function Ga4Tab() {
                     {directOrigin && <Area type="monotone" dataKey="Direto" stroke={C.orange} strokeWidth={2}   fill="url(#gD)" name="Direto"          connectNulls />}
                   </AreaChart>
                 </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* País/Cidade, Dispositivo, Canal, Campanha — últimos 6 meses apenas */}
+      {hasDetail && (
+        <>
+          <SectionHeader icon={MapPin} title="País, Dispositivo, Canal e Campanha" subtitle={`Detalhe granular — ${sectionSub} (disponível apenas nos últimos 6 meses)`} color={C.cyan} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+            {geoRows.length > 0 && (
+              <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px" }}>
+                <h4 style={{ fontSize: 12, color: C.textMuted, margin: "0 0 10px", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}><MapPin size={13} /> País / Cidade</h4>
+                <DataTable headers={["Cidade", "Sessões", "Usuários"]} rows={geoRows.map(r => [r.label, fmt(r.sessoes), fmt(r.usuarios)])} />
+              </div>
+            )}
+            {deviceRows.length > 0 && (
+              <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px" }}>
+                <h4 style={{ fontSize: 12, color: C.textMuted, margin: "0 0 10px", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}><Smartphone size={13} /> Dispositivo</h4>
+                <DataTable headers={["Categoria", "Sessões", "Usuários"]} rows={deviceRows.map(r => [r.label, fmt(r.sessoes), fmt(r.usuarios)])} />
+              </div>
+            )}
+            {channelRows.length > 0 && (
+              <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px" }}>
+                <h4 style={{ fontSize: 12, color: C.textMuted, margin: "0 0 10px", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}><Route size={13} /> Canal Padrão</h4>
+                <DataTable headers={["Canal", "Sessões", "Usuários"]} rows={channelRows.map(r => [r.label, fmt(r.sessoes), fmt(r.usuarios)])} />
+              </div>
+            )}
+            {campaignRows.length > 0 && (
+              <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px" }}>
+                <h4 style={{ fontSize: 12, color: C.textMuted, margin: "0 0 10px", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}><Megaphone size={13} /> Campanha / Origem-Mídia</h4>
+                <DataTable headers={["Origem / Mídia", "Sessões", "Usuários"]} rows={campaignRows.map(r => [r.label, fmt(r.sessoes), fmt(r.usuarios)])} />
               </div>
             )}
           </div>

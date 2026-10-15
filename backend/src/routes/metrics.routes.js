@@ -12,5 +12,10 @@ router.get("/linkedin",          metricsController.getLinkedin);
 router.get("/ga4",               metricsController.getGa4);
 router.get("/ai-insights",       metricsController.getAiInsights);
 router.post("/categorize-themes",metricsController.categorizeThemes);
+router.get("/instagram-stories", metricsController.getInstagramStories);
+router.get("/facebook",          metricsController.getFacebook);
+router.get("/linkedin-posts",    metricsController.getLinkedinPosts);
+router.get("/ga4-detail",        metricsController.getGa4Detail);
+router.get("/narrative",         metricsController.getNarrative);
 
 module.exports = router;

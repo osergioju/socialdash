@@ -58,6 +58,11 @@ export const metricsApi = {
   ga4:              (clientId)        => api.get("/metrics/ga4",               { params: { clientId } }).then((r) => r.data),
   aiInsights:       (clientId, force) => api.get("/metrics/ai-insights",       { params: { clientId, force: force || undefined } }).then((r) => r.data),
   categorizeThemes: (clientId)        => api.post("/metrics/categorize-themes",null, { params: { clientId } }).then((r) => r.data),
+  instagramStories: (clientId)        => api.get("/metrics/instagram-stories", { params: { clientId } }).then((r) => r.data),
+  facebook:         (clientId)        => api.get("/metrics/facebook",          { params: { clientId } }).then((r) => r.data),
+  linkedinPosts:    (clientId)        => api.get("/metrics/linkedin-posts",    { params: { clientId } }).then((r) => r.data),
+  ga4Detail:        (clientId)        => api.get("/metrics/ga4-detail",        { params: { clientId } }).then((r) => r.data),
+  narrative:        (clientId, month, force) => api.get("/metrics/narrative", { params: { clientId, month, force: force || undefined } }).then((r) => r.data),
 };
 
 export const syncApi = {

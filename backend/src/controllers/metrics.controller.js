@@ -106,4 +106,68 @@ async function getAiInsights(req, res) {
   }
 }
 
-module.exports = { getInstagram, getLinkedin, getGa4, getOverview, getAiInsights, categorizeThemes };
+async function getInstagramStories(req, res) {
+  try {
+    const { clientId } = req.query;
+    if (!clientId) return res.status(400).json({ error: "clientId obrigatório" });
+    await verifyClientAccess(clientId, req);
+    const data = await metricsService.getInstagramStories(clientId);
+    res.json(data);
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+}
+
+async function getFacebook(req, res) {
+  try {
+    const { clientId } = req.query;
+    if (!clientId) return res.status(400).json({ error: "clientId obrigatório" });
+    await verifyClientAccess(clientId, req);
+    const data = await metricsService.getFacebookMetrics(clientId);
+    res.json(data);
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+}
+
+async function getLinkedinPosts(req, res) {
+  try {
+    const { clientId } = req.query;
+    if (!clientId) return res.status(400).json({ error: "clientId obrigatório" });
+    await verifyClientAccess(clientId, req);
+    const data = await metricsService.getLinkedinPosts(clientId);
+    res.json(data);
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+}
+
+async function getGa4Detail(req, res) {
+  try {
+    const { clientId } = req.query;
+    if (!clientId) return res.status(400).json({ error: "clientId obrigatório" });
+    await verifyClientAccess(clientId, req);
+    const data = await metricsService.getGa4Detail(clientId);
+    res.json(data);
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+}
+
+async function getNarrative(req, res) {
+  try {
+    const { clientId, month } = req.query;
+    if (!clientId) return res.status(400).json({ error: "clientId obrigatório" });
+    await verifyClientAccess(clientId, req);
+    const force = req.query.force === "true";
+    const data = await metricsService.getMonthlyNarrative(clientId, month, force);
+    res.json(data);
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message });
+  }
+}
+
+module.exports = {
+  getInstagram, getLinkedin, getGa4, getOverview, getAiInsights, categorizeThemes,
+  getInstagramStories, getFacebook, getLinkedinPosts, getGa4Detail, getNarrative,
+};

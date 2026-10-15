@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { BarChart3, Globe, Layers, LogOut, ArrowLeft, Users, RefreshCw, AlertCircle, Megaphone, Radar } from "lucide-react";
+import { BarChart3, Globe, Layers, LogOut, ArrowLeft, Users, RefreshCw, AlertCircle, Megaphone, Radar, Facebook, FileDown } from "lucide-react";
 import { C } from "../utils/colors";
 import { useAuth } from "../contexts/AuthContext";
 
@@ -18,6 +18,7 @@ const LinkedinIcon = () => (
 const TABS = [
   { id: "overview",   label: "Visão Geral",      icon: BarChart3 },
   { id: "instagram",  label: "Instagram",         icon: InstagramIcon },
+  { id: "facebook",   label: "Facebook",          icon: Facebook },
   { id: "linkedin",   label: "LinkedIn",          icon: LinkedinIcon },
   { id: "site",       label: "Site (GA4)",        icon: Globe },
   { id: "temas",      label: "Temas & Conteúdo",  icon: Layers },
@@ -118,6 +119,14 @@ export default function DashboardLayout({
                   {syncing ? "Sincronizando…" : "Sincronizar"}
                 </button>
               </div>
+
+              <button
+                onClick={() => navigate(`/clients/${clientId}/reports`)}
+                title="Ver relatório exportável"
+                style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 7, border: `1px solid ${C.border}`, background: "transparent", cursor: "pointer", color: C.textMuted, fontSize: 11, fontFamily: "inherit" }}
+              >
+                <FileDown size={12} /> Relatório
+              </button>
 
               <span style={{ fontSize: 11, color: C.textMuted }}>{user?.name}</span>
               <button onClick={logout} title="Sair" style={{ display: "flex", padding: 6, borderRadius: 7, border: `1px solid ${C.border}`, background: "transparent", cursor: "pointer", color: C.textMuted }}>

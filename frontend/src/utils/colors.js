@@ -3,6 +3,7 @@ export const C = {
   accent: "#F59E0B",       accentLight: "#FBBF24",
   instagram: "#E1306C",    instagramLight: "#F77FB0",
   linkedin: "#0A66C2",     linkedinLight: "#5BA3E6",
+  facebook: "#1877F2",     facebookLight: "#6EA8F7",
   ga4: "#4285F4",          ga4Light: "#7BAAF7",
   green: "#10B981",        red: "#EF4444",  orange: "#F97316", purple: "#8B5CF6", cyan: "#06B6D4",
   bg: "#0B1120",           card: "#111827",  cardHover: "#1F2937",

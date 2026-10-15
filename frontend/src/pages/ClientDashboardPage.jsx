@@ -1,11 +1,13 @@
 import React, { useState } from "react";
 import { useParams } from "react-router-dom";
-import { BarChart3, Globe, Layers, LogOut, Megaphone, Radar } from "lucide-react";
+import { BarChart3, Globe, Layers, LogOut, Megaphone, Radar, Facebook, FileDown } from "lucide-react";
+import { Link } from "react-router-dom";
 import { C } from "../utils/colors";
 import { useClientAuth } from "../contexts/ClientAuthContext";
 import { ClientContext } from "../contexts/ClientContext";
 import OverviewTab  from "./tabs/OverviewTab";
 import InstagramTab from "./tabs/InstagramTab";
+import FacebookTab  from "./tabs/FacebookTab";
 import LinkedinTab  from "./tabs/LinkedinTab";
 import Ga4Tab       from "./tabs/Ga4Tab";
 import TemasTab     from "./tabs/TemasTab";
@@ -26,6 +28,7 @@ const LinkedinIcon = () => (
 const TABS = [
   { id: "overview",  label: "Visão Geral",      icon: BarChart3 },
   { id: "instagram", label: "Instagram",         icon: InstagramIcon },
+  { id: "facebook",  label: "Facebook",          icon: Facebook },
   { id: "linkedin",  label: "LinkedIn",          icon: LinkedinIcon },
   { id: "site",      label: "Site (GA4)",        icon: Globe },
   { id: "temas",     label: "Temas & Conteúdo",  icon: Layers },
@@ -36,6 +39,7 @@ const TABS = [
 const TAB_COMPONENTS = {
   overview:  OverviewTab,
   instagram: InstagramTab,
+  facebook:  FacebookTab,
   linkedin:  LinkedinTab,
   site:      Ga4Tab,
   temas:     TemasTab,
@@ -79,6 +83,13 @@ export default function ClientDashboardPage() {
 
               {/* User + logout */}
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <Link
+                  to={`/c/${slug}/reports`}
+                  title="Ver relatório exportável"
+                  style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 10px", borderRadius: 7, border: `1px solid ${C.border}`, background: "transparent", color: C.textMuted, fontSize: 11, textDecoration: "none" }}
+                >
+                  <FileDown size={12} /> Relatório
+                </Link>
                 <span style={{ fontSize: 11, color: C.textMuted }}>{clientUser?.name}</span>
                 <button
                   onClick={() => logout(slug)}

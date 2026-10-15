@@ -1,18 +1,39 @@
 import React, { useState } from "react";
-import { Users, Eye, Heart, MousePointerClick, Video, Activity, TrendingUp, MapPin } from "lucide-react";
+import { Users, Eye, Heart, MousePointerClick, Video, Activity, TrendingUp, MapPin, BookOpen, UserRound, Calendar, Clock } from "lucide-react";
 import { ArrowUpRight, ArrowDownRight } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, Cell, LineChart, Line, ComposedChart,
 } from "recharts";
-import { useInstagram } from "../../hooks/useMetrics";
+import { useInstagram, useInstagramStories } from "../../hooks/useMetrics";
 import { useClientContext } from "../../contexts/ClientContext";
 import { LoadingState, ErrorState } from "../../components/ui/LoadingState";
 import SectionHeader from "../../components/ui/SectionHeader";
 import CustomTooltip from "../../components/ui/CustomTooltip";
 import MonthNav from "../../components/ui/MonthNav";
+import DataTable from "../../components/ui/DataTable";
 import { C } from "../../utils/colors";
 import { fmt } from "../../utils/format";
+
+const WEEKDAYS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+
+// "Melhor dia/horário pra postar" — calculado no cliente a partir dos posts
+// crus (sem chamada nova: já vêm em getInstagramMetrics), igual ao padrão
+// de agregação client-side já usado nesta aba para cidades.
+function bestTimeData(posts) {
+  const byDay = Array.from({ length: 7 }, () => ({ count: 0, eng: 0 }));
+  const byHour = Array.from({ length: 24 }, () => ({ count: 0, eng: 0 }));
+  for (const p of posts) {
+    const d = new Date(p.timestamp);
+    const eng = (p.likes || 0) + (p.comments || 0);
+    byDay[d.getDay()].count++;  byDay[d.getDay()].eng += eng;
+    byHour[d.getHours()].count++; byHour[d.getHours()].eng += eng;
+  }
+  return {
+    dayData:  byDay.map((d, i) => ({ label: WEEKDAYS[i], media: d.count ? +(d.eng / d.count).toFixed(1) : 0 })),
+    hourData: byHour.map((h, i) => ({ label: `${String(i).padStart(2, "0")}h`, media: h.count ? +(h.eng / h.count).toFixed(1) : 0 })),
+  };
+}
 
 // % change from prev to curr; returns string or null
 function calcVar(curr, prev) {
@@ -55,14 +76,20 @@ const CITY_COLORS = [C.instagram, C.accent, C.green, C.purple, C.cyan || "#06B6D
 export default function InstagramTab() {
   const clientId = useClientContext();
   const { data, loading, error } = useInstagram(clientId);
+  const storiesHook = useInstagramStories(clientId);
   // Inicia em Infinity para que Math.min(Infinity, length-1) selecione sempre o mês mais recente
   const [mi, setMi] = useState(Infinity);
 
   if (loading) return <LoadingState />;
   if (error)   return <ErrorState message={error} />;
 
-  const { metrics, cities } = data;
+  const { metrics, cities, posts = [] } = data;
   if (!metrics?.length) return <ErrorState message="Nenhum dado disponível. Clique em Sincronizar para buscar os dados." />;
+
+  const stories = storiesHook.data?.stories || [];
+  const age     = storiesHook.data?.demographics?.age || [];
+  const gender  = storiesHook.data?.demographics?.gender || [];
+  const { dayData, hourData } = bestTimeData(posts);
 
   // Ordena do mais antigo → mais recente (para gráficos e para o seletor)
   const sorted = [...metrics].sort((a, b) => a.month.localeCompare(b.month));
@@ -245,6 +272,88 @@ export default function InstagramTab() {
           </ComposedChart>
         </ResponsiveContainer>
       </div>
+
+      {/* Stories individuais */}
+      {stories.length > 0 && (
+        <>
+          <SectionHeader icon={BookOpen} title="Stories" subtitle="Detalhe por story — últimas publicadas (a API só retorna stories ativas, até 24h)" color={C.purple} />
+          <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px" }}>
+            <DataTable
+              headers={["Data", "Visualizações", "Avançar", "Voltar", "Saídas"]}
+              rows={stories.slice(0, 20).map(s => [
+                new Date(s.timestamp).toLocaleDateString("pt-BR"),
+                fmt(s.views), fmt(s.tapsForward), fmt(s.tapsBack), fmt(s.exits),
+              ])}
+            />
+          </div>
+        </>
+      )}
+
+      {/* Demografia da audiência */}
+      {(age.length > 0 || gender.length > 0) && (
+        <>
+          <SectionHeader icon={UserRound} title="Demografia da Audiência" subtitle="Idade e gênero — snapshot do mês atual" color={C.cyan} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+            <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px" }}>
+              <h4 style={{ fontSize: 12, color: C.textMuted, margin: "0 0 10px", fontWeight: 600 }}>Por Faixa Etária</h4>
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={age}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+                  <XAxis dataKey="label" tick={{ fill: C.textMuted, fontSize: 10 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: C.textMuted, fontSize: 9 }} axisLine={false} tickLine={false} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Bar dataKey="value" name="Alcance" fill={C.cyan} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px" }}>
+              <h4 style={{ fontSize: 12, color: C.textMuted, margin: "0 0 10px", fontWeight: 600 }}>Por Gênero</h4>
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={gender}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+                  <XAxis dataKey="label" tick={{ fill: C.textMuted, fontSize: 10 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: C.textMuted, fontSize: 9 }} axisLine={false} tickLine={false} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Bar dataKey="value" name="Alcance" fill={C.purple} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Melhor dia/horário pra postar */}
+      {posts.length > 0 && (
+        <>
+          <SectionHeader icon={Calendar} title="Melhor Dia e Horário pra Postar" subtitle="Engajamento médio (curtidas + comentários) por post, histórico completo" color={C.green} />
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px" }}>
+              <h4 style={{ fontSize: 12, color: C.textMuted, margin: "0 0 10px", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}><Calendar size={13} /> Por Dia da Semana</h4>
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={dayData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+                  <XAxis dataKey="label" tick={{ fill: C.textMuted, fontSize: 10 }} axisLine={false} tickLine={false} />
+                  <YAxis tick={{ fill: C.textMuted, fontSize: 9 }} axisLine={false} tickLine={false} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Bar dataKey="media" name="Engaj. médio" fill={C.green} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 14, padding: "18px" }}>
+              <h4 style={{ fontSize: 12, color: C.textMuted, margin: "0 0 10px", fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}><Clock size={13} /> Por Horário</h4>
+              <ResponsiveContainer width="100%" height={200}>
+                <BarChart data={hourData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
+                  <XAxis dataKey="label" tick={{ fill: C.textMuted, fontSize: 8 }} axisLine={false} tickLine={false} interval={1} />
+                  <YAxis tick={{ fill: C.textMuted, fontSize: 9 }} axisLine={false} tickLine={false} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Bar dataKey="media" name="Engaj. médio" fill={C.green} radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </>
+      )}
     </>
   );
 }

@@ -14,6 +14,7 @@ import OAuthCallbackPage       from "./pages/OAuthCallbackPage";
 import ClientLoginPage         from "./pages/ClientLoginPage";
 import ClientDashboardPage     from "./pages/ClientDashboardPage";
 import PrivacyPolicyPage       from "./pages/PrivacyPolicyPage";
+import ReportPage              from "./pages/ReportPage";
 
 export default function App() {
   return (
@@ -31,10 +32,14 @@ export default function App() {
           <Route path="/teams"                 element={<PrivateRoute><TeamsPage /></PrivateRoute>} />
           <Route path="/clients/:id"           element={<PrivateRoute><ClientDetailPage /></PrivateRoute>} />
           <Route path="/clients/:id/dashboard" element={<PrivateRoute><DashboardPage /></PrivateRoute>} />
+          <Route path="/clients/:id/reports"         element={<PrivateRoute><ReportPage /></PrivateRoute>} />
+          <Route path="/clients/:id/reports/:month"  element={<PrivateRoute><ReportPage /></PrivateRoute>} />
 
           {/* Área do cliente final */}
           <Route path="/c/:slug/login" element={<ClientLoginPage />} />
           <Route path="/c/:slug"       element={<ClientPrivateRoute><ClientDashboardPage /></ClientPrivateRoute>} />
+          <Route path="/c/:slug/reports"        element={<ClientPrivateRoute><ReportPage /></ClientPrivateRoute>} />
+          <Route path="/c/:slug/reports/:month" element={<ClientPrivateRoute><ReportPage /></ClientPrivateRoute>} />
 
           <Route path="*" element={<Navigate to="/clients" replace />} />
         </Routes>
