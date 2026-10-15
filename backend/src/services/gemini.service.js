@@ -1,5 +1,5 @@
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
-const GROQ_MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
+const GROQ_MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
 
 // ─── Helper compartilhado: chama o Groq (Chat Completions, compatível com o
 // formato da OpenAI) e retorna JSON parseado ──────────────────────────────
